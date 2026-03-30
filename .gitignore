@@ -1,0 +1,57 @@
+# Built outputs
+*.iml
+/build
+/captures
+app/build
+
+# Gradle
+.gradle
+gradle-app.setting
+!gradle-wrapper.jar
+!gradle-wrapper.properties
+
+# IntelliJ / Android Studio
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+/.idea/deploymentTargetSelector.xml
+.idea/caches/
+
+# Local config — never commit
+local.properties
+*.properties
+
+# macOS
+.DS_Store
+
+# Native build
+.externalNativeBuild
+.cxx
+
+# Signing
+*.keystore
+*.jks
+
+# Environment
+.env
+
+# Test results
+test_results/
+
+# Project rules/guidelines
+coding_rules.md
+ui_rules.md
+security_rules.md
+testing_rules.md
+git_rules.md
+workflow_rules.md
+coding_rules
+git_rules
+security_rules
+SRS_Technical_Design_Document
+testing_rules
+ui_rules
+workflow_rules
