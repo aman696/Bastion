@@ -3,7 +3,7 @@
 /build
 /captures
 app/build
-
+/docs
 # Gradle
 .gradle
 gradle-app.setting

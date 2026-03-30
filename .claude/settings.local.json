@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -Command \"Set-Location 'C:\\\\Users\\\\Aman\\\\StudioProjects\\\\AppBlocker'; git checkout -b feature/foundation-module 2>&1\")",
+      "Bash(powershell -Command \"\nSet-Location 'C:\\\\Users\\\\Aman\\\\StudioProjects\\\\AppBlocker'\nRemove-Item 'app\\\\src\\\\main\\\\java\\\\com\\\\example\\\\appblocker\\\\FirstFragment.kt' -Force\nRemove-Item 'app\\\\src\\\\main\\\\java\\\\com\\\\example\\\\appblocker\\\\SecondFragment.kt' -Force\nRemove-Item 'app\\\\src\\\\main\\\\res\\\\layout\\\\activity_main.xml' -Force\nRemove-Item 'app\\\\src\\\\main\\\\res\\\\layout\\\\content_main.xml' -Force\nRemove-Item 'app\\\\src\\\\main\\\\res\\\\layout\\\\fragment_first.xml' -Force\nRemove-Item 'app\\\\src\\\\main\\\\res\\\\layout\\\\fragment_second.xml' -Force\nRemove-Item 'app\\\\src\\\\main\\\\res\\\\menu\\\\menu_main.xml' -Force\nRemove-Item 'app\\\\src\\\\main\\\\res\\\\navigation\\\\nav_graph.xml' -Force\nRemove-Item 'app\\\\src\\\\main\\\\res\\\\values\\\\dimens.xml' -Force\nRemove-Item -Recurse -Force 'app\\\\src\\\\main\\\\res\\\\values-land'\nRemove-Item -Recurse -Force 'app\\\\src\\\\main\\\\res\\\\values-w600dp'\nRemove-Item -Recurse -Force 'app\\\\src\\\\main\\\\res\\\\values-w1240dp'\nWrite-Host 'Boilerplate deleted successfully'\n\")",
+      "Bash(powershell -Command \"\nSet-Location 'C:\\\\Users\\\\Aman\\\\StudioProjects\\\\AppBlocker'\ngit add -A\ngit commit -m 'chore: wire all foundation dependencies and build config'\n\")"
+    ]
+  }
+}
