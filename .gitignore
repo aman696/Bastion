@@ -42,6 +42,7 @@ local.properties
 test_results/
 
 # Project rules/guidelines
+CLAUDE.md
 coding_rules.md
 ui_rules.md
 security_rules.md

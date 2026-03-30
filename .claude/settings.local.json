@@ -3,7 +3,23 @@
     "allow": [
       "Bash(powershell -Command \"Set-Location 'C:\\\\Users\\\\Aman\\\\StudioProjects\\\\AppBlocker'; git checkout -b feature/foundation-module 2>&1\")",
       "Bash(powershell -Command \"\nSet-Location 'C:\\\\Users\\\\Aman\\\\StudioProjects\\\\AppBlocker'\nRemove-Item 'app\\\\src\\\\main\\\\java\\\\com\\\\example\\\\appblocker\\\\FirstFragment.kt' -Force\nRemove-Item 'app\\\\src\\\\main\\\\java\\\\com\\\\example\\\\appblocker\\\\SecondFragment.kt' -Force\nRemove-Item 'app\\\\src\\\\main\\\\res\\\\layout\\\\activity_main.xml' -Force\nRemove-Item 'app\\\\src\\\\main\\\\res\\\\layout\\\\content_main.xml' -Force\nRemove-Item 'app\\\\src\\\\main\\\\res\\\\layout\\\\fragment_first.xml' -Force\nRemove-Item 'app\\\\src\\\\main\\\\res\\\\layout\\\\fragment_second.xml' -Force\nRemove-Item 'app\\\\src\\\\main\\\\res\\\\menu\\\\menu_main.xml' -Force\nRemove-Item 'app\\\\src\\\\main\\\\res\\\\navigation\\\\nav_graph.xml' -Force\nRemove-Item 'app\\\\src\\\\main\\\\res\\\\values\\\\dimens.xml' -Force\nRemove-Item -Recurse -Force 'app\\\\src\\\\main\\\\res\\\\values-land'\nRemove-Item -Recurse -Force 'app\\\\src\\\\main\\\\res\\\\values-w600dp'\nRemove-Item -Recurse -Force 'app\\\\src\\\\main\\\\res\\\\values-w1240dp'\nWrite-Host 'Boilerplate deleted successfully'\n\")",
-      "Bash(powershell -Command \"\nSet-Location 'C:\\\\Users\\\\Aman\\\\StudioProjects\\\\AppBlocker'\ngit add -A\ngit commit -m 'chore: wire all foundation dependencies and build config'\n\")"
+      "Bash(powershell -Command \"\nSet-Location 'C:\\\\Users\\\\Aman\\\\StudioProjects\\\\AppBlocker'\ngit add -A\ngit commit -m 'chore: wire all foundation dependencies and build config'\n\")",
+      "Bash(powershell -Command \"Remove-Item -Recurse -Force 'C:\\\\Users\\\\Aman\\\\StudioProjects\\\\AppBlocker\\\\app\\\\src\\\\main\\\\java\\\\com\\\\example\\\\appblocker\\\\MainActivity.kt'; Remove-Item -Recurse -Force 'C:\\\\Users\\\\Aman\\\\StudioProjects\\\\AppBlocker\\\\app\\\\src\\\\main\\\\java\\\\com\\\\example' -ErrorAction SilentlyContinue; Write-Host 'Old MainActivity removed'\")",
+      "Bash(powershell -Command \"Set-Location 'C:\\\\Users\\\\Aman\\\\StudioProjects\\\\AppBlocker'; .\\\\gradlew assembleDebug 2>&1\" -timeout 300000)",
+      "Bash(powershell -Command \"\n$studioPath = 'C:\\\\Program Files\\\\Android\\\\Android Studio'\n$jbrPath = Join-Path $studioPath 'jbr'\nif \\(Test-Path $jbrPath\\) {\n    Write-Host \\\\\"Found JBR at: $jbrPath\\\\\"\n    $env:JAVA_HOME = $jbrPath\n    Write-Host \\\\\"JAVA_HOME set to: $env:JAVA_HOME\\\\\"\n} else {\n    Write-Host 'JBR not found at default path, searching...'\n    Get-ChildItem 'C:\\\\Program Files\\\\Android\\\\Android Studio' -Directory | Select-Object Name\n}\n\")",
+      "Bash(powershell -Command \"Get-ChildItem 'C:\\\\Program Files\\\\Android\\\\Android Studio' -Directory | Select-Object -ExpandProperty Name\")",
+      "Bash(cmd.exe /c \"set JAVA_HOME=C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr && cd /d C:\\\\Users\\\\Aman\\\\StudioProjects\\\\AppBlocker && gradlew.bat assembleDebug 2>&1\" -timeout 300000)",
+      "Bash(cmd.exe /c \"set JAVA_HOME=C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr && cd /d C:\\\\Users\\\\Aman\\\\StudioProjects\\\\AppBlocker && gradlew.bat assembleDebug\" -timeout 300000)",
+      "Bash(cmd.exe /c \"set JAVA_HOME=C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr && cd /d C:\\\\Users\\\\Aman\\\\StudioProjects\\\\AppBlocker && gradlew.bat assembleDebug > build_output.txt 2>&1 && echo BUILD_SUCCESS || echo BUILD_FAILED\")",
+      "Bash(cmd.exe /c \"set JAVA_HOME=C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr && cd /d C:\\\\Users\\\\Aman\\\\StudioProjects\\\\AppBlocker && gradlew.bat assembleDebug > build_output.txt 2>&1\")",
+      "Bash(cmd.exe /c \"type C:\\\\Users\\\\Aman\\\\StudioProjects\\\\AppBlocker\\\\build_output.txt | findstr /i \\\\\"BUILD error warning failed task\\\\\"\")",
+      "Bash(cmd.exe /c \"type C:\\\\Users\\\\Aman\\\\StudioProjects\\\\AppBlocker\\\\build_output.txt\")",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File - << 'EOF'\n$env:JAVA_HOME = 'C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr'\n$env:PATH = $env:JAVA_HOME + '\\\\bin;' + $env:PATH\nSet-Location 'C:\\\\Users\\\\Aman\\\\StudioProjects\\\\AppBlocker'\ncmd /c \"gradlew.bat assembleDebug > build_out.txt 2>&1\"\nGet-Content build_out.txt | Select-Object -Last 30\nEOF)",
+      "Read(//mnt/c/Users/Aman/StudioProjects/**)",
+      "Bash(./gradlew :app:assembleDebug)",
+      "Bash(JAVA_HOME=\"/c/Program Files/Android/Android Studio/jbr\")",
+      "Bash(export JAVA_HOME)",
+      "Bash(export PATH=\"$JAVA_HOME/bin:$PATH\")"
     ]
   }
 }
