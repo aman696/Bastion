@@ -40,8 +40,15 @@ fun BastionNavGraph(
         }
 
         composable(Screen.Home.route) {
-            // onAppTapped will be wired in Task 7 when HomeScreen gains that parameter
-            HomeScreen()
+            HomeScreen(
+                onAppTapped = { pkg, isHardcoreActive ->
+                    if (isHardcoreActive) {
+                        navController.navigate(Screen.HardcoreLock.createRoute(pkg))
+                    } else {
+                        navController.navigate(Screen.AppDetail.createRoute(pkg))
+                    }
+                }
+            )
         }
 
         composable(
