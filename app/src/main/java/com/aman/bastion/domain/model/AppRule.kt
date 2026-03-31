@@ -6,5 +6,10 @@ data class AppRule(
     val isHardBlocked: Boolean,
     val categoryId: String?,
     val createdAt: Long,
-    val hardcoreUntilMs: Long = 0L
-)
+    val hardcoreUntilMs: Long = 0L,
+    val unlockCondition: UnlockCondition? = null,
+    val blockNote: String? = null
+) {
+    val isHardcoreActive: Boolean
+        get() = hardcoreUntilMs > System.currentTimeMillis()
+}
