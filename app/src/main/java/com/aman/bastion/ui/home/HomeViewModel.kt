@@ -82,7 +82,7 @@ class HomeViewModel @Inject constructor(
                         packageName = info.packageName,
                         appName = info.loadLabel(pm).toString(),
                         icon = info.loadIcon(pm).toBitmap().asImageBitmap(),
-                        isBlocked = rule != null,
+                        isBlocked = rule != null && !rule.isHardBlocked,
                         hardcoreUntilMs = rule?.hardcoreUntilMs ?: 0L
                     )
                 }

@@ -32,7 +32,7 @@ fun AppOptionsSheet(
     onHardcoreBlock: (String, Long) -> Unit,
     onUnblock: (String) -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(true)
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
