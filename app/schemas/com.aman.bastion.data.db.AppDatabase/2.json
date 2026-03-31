@@ -1,0 +1,337 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "de6c9ace5dfa6878e4fa85153bfebd1d",
+    "entities": [
+      {
+        "tableName": "app_rules",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`package_name` TEXT NOT NULL, `daily_limit_ms` INTEGER NOT NULL, `is_hard_blocked` INTEGER NOT NULL, `category_id` TEXT, `created_at` INTEGER NOT NULL, `hardcore_until_ms` INTEGER NOT NULL, PRIMARY KEY(`package_name`))",
+        "fields": [
+          {
+            "fieldPath": "packageName",
+            "columnName": "package_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dailyLimitMs",
+            "columnName": "daily_limit_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isHardBlocked",
+            "columnName": "is_hard_blocked",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "categoryId",
+            "columnName": "category_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hardcoreUntilMs",
+            "columnName": "hardcore_until_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "package_name"
+          ]
+        }
+      },
+      {
+        "tableName": "app_categories",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `daily_limit_ms` INTEGER NOT NULL, `color_hex` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dailyLimitMs",
+            "columnName": "daily_limit_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "colorHex",
+            "columnName": "color_hex",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "schedules",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `target_packages` TEXT NOT NULL, `target_category_ids` TEXT NOT NULL, `start_time_minutes` INTEGER NOT NULL, `end_time_minutes` INTEGER NOT NULL, `days_of_week_bitmask` INTEGER NOT NULL, `block_type` TEXT NOT NULL, `is_active` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetPackages",
+            "columnName": "target_packages",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetCategoryIds",
+            "columnName": "target_category_ids",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startTimeMinutes",
+            "columnName": "start_time_minutes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endTimeMinutes",
+            "columnName": "end_time_minutes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "daysOfWeekBitmask",
+            "columnName": "days_of_week_bitmask",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "blockType",
+            "columnName": "block_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isActive",
+            "columnName": "is_active",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "daily_usage",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`package_name` TEXT NOT NULL, `date` TEXT NOT NULL, `elapsed_ms` INTEGER NOT NULL, `exclusion_ms` INTEGER NOT NULL, PRIMARY KEY(`package_name`, `date`))",
+        "fields": [
+          {
+            "fieldPath": "packageName",
+            "columnName": "package_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "elapsedMs",
+            "columnName": "elapsed_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exclusionMs",
+            "columnName": "exclusion_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "package_name",
+            "date"
+          ]
+        }
+      },
+      {
+        "tableName": "usage_history",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `package_name` TEXT NOT NULL, `date` TEXT NOT NULL, `elapsed_ms` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "packageName",
+            "columnName": "package_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "date",
+            "columnName": "date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "elapsedMs",
+            "columnName": "elapsed_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "inapp_rules",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `package_name` TEXT NOT NULL, `feature_id` TEXT NOT NULL, `rule_name` TEXT NOT NULL, `is_enabled` INTEGER NOT NULL, `rule_type` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "packageName",
+            "columnName": "package_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "featureId",
+            "columnName": "feature_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ruleName",
+            "columnName": "rule_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isEnabled",
+            "columnName": "is_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ruleType",
+            "columnName": "rule_type",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "service_state",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `a11y_enabled` INTEGER NOT NULL, `a11y_last_seen_at` INTEGER NOT NULL, `overlay_permission` INTEGER NOT NULL, `usage_access_granted` INTEGER NOT NULL, `battery_opt_exempt` INTEGER NOT NULL, `last_checked_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "a11yEnabled",
+            "columnName": "a11y_enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "a11yLastSeenAt",
+            "columnName": "a11y_last_seen_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "overlayPermission",
+            "columnName": "overlay_permission",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "usageAccessGranted",
+            "columnName": "usage_access_granted",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "batteryOptExempt",
+            "columnName": "battery_opt_exempt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastCheckedAt",
+            "columnName": "last_checked_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'de6c9ace5dfa6878e4fa85153bfebd1d')"
+    ]
+  }
+}
