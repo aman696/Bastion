@@ -25,7 +25,7 @@ class AppRuleDaoTest {
         db = Room.inMemoryDatabaseBuilder(
             ApplicationProvider.getApplicationContext(),
             AppDatabase::class.java
-        ).build()
+        ).allowMainThreadQueries().build()
     }
 
     @After
