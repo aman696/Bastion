@@ -20,5 +20,8 @@ data class AppRuleEntity(
     val categoryId: String?,
 
     @ColumnInfo(name = "created_at")
-    val createdAt: Long
+    val createdAt: Long,
+
+    @ColumnInfo(name = "hardcore_until_ms")
+    val hardcoreUntilMs: Long = 0L
 )

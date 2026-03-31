@@ -5,5 +5,6 @@ data class AppRule(
     val dailyLimitMs: Long,
     val isHardBlocked: Boolean,
     val categoryId: String?,
-    val createdAt: Long
+    val createdAt: Long,
+    val hardcoreUntilMs: Long = 0L
 )
