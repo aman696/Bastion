@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -74,14 +74,23 @@ class HomeViewModel @Inject constructor(
                 .filter { it.packageName != context.packageName }
                 .sortedBy { it.loadLabel(pm).toString().lowercase() }
 
+            // Cache labels and icons once — avoid re-querying on every rule emission
+            val appInfoCache: Map<String, Pair<String, ImageBitmap>> = installed.associate { info ->
+                info.packageName to Pair(
+                    info.loadLabel(pm).toString(),
+                    info.loadIcon(pm).toBitmap().asImageBitmap()
+                )
+            }
+
             repository.getAll().collect { rules ->
                 val ruleMap = rules.associateBy { it.packageName }
-                rawApps.value = installed.map { info ->
+                rawApps.value = installed.mapNotNull { info ->
+                    val (appName, icon) = appInfoCache[info.packageName] ?: return@mapNotNull null
                     val rule = ruleMap[info.packageName]
                     AppListItem(
                         packageName = info.packageName,
-                        appName = info.loadLabel(pm).toString(),
-                        icon = info.loadIcon(pm).toBitmap().asImageBitmap(),
+                        appName = appName,
+                        icon = icon,
                         isBlocked = rule != null && !rule.isHardBlocked,
                         hardcoreUntilMs = rule?.hardcoreUntilMs ?: 0L
                     )
@@ -128,7 +137,7 @@ class HomeViewModel @Inject constructor(
 
     fun onUnblock(packageName: String) {
         viewModelScope.launch {
-            val rule = repository.getByPackage(packageName).first()
+            val rule = repository.getByPackage(packageName).firstOrNull()
             if (rule != null && rule.hardcoreUntilMs > System.currentTimeMillis()) return@launch
             repository.delete(packageName)
         }
