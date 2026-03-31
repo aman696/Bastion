@@ -3,6 +3,7 @@ package com.aman.bastion.data.blocking
 import com.aman.bastion.data.blocking.dao.AppRuleDao
 import com.aman.bastion.data.blocking.entity.AppRuleEntity
 import com.aman.bastion.domain.model.AppRule
+import com.aman.bastion.domain.model.UnlockCondition
 import com.aman.bastion.domain.repository.AppRuleRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -27,20 +28,26 @@ class AppRuleRepositoryImpl @Inject constructor(
         dao.delete(packageName)
 
     private fun AppRuleEntity.toDomain() = AppRule(
-        packageName = packageName,
-        dailyLimitMs = dailyLimitMs,
-        isHardBlocked = isHardBlocked,
-        categoryId = categoryId,
-        createdAt = createdAt,
-        hardcoreUntilMs = hardcoreUntilMs
+        packageName      = packageName,
+        dailyLimitMs     = dailyLimitMs,
+        isHardBlocked    = isHardBlocked,
+        categoryId       = categoryId,
+        createdAt        = createdAt,
+        hardcoreUntilMs  = hardcoreUntilMs,
+        unlockCondition  = unlockCondition?.let {
+            runCatching { UnlockCondition.valueOf(it) }.getOrNull()
+        },
+        blockNote        = blockNote
     )
 
     private fun AppRule.toEntity() = AppRuleEntity(
-        packageName = packageName,
-        dailyLimitMs = dailyLimitMs,
-        isHardBlocked = isHardBlocked,
-        categoryId = categoryId,
-        createdAt = createdAt,
-        hardcoreUntilMs = hardcoreUntilMs
+        packageName     = packageName,
+        dailyLimitMs    = dailyLimitMs,
+        isHardBlocked   = isHardBlocked,
+        categoryId      = categoryId,
+        createdAt       = createdAt,
+        hardcoreUntilMs = hardcoreUntilMs,
+        unlockCondition = unlockCondition?.name,
+        blockNote       = blockNote
     )
 }
