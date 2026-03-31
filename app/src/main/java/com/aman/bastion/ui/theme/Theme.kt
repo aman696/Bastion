@@ -3,6 +3,8 @@ package com.aman.bastion.ui.theme
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -43,21 +45,26 @@ private val DarkColors = darkColorScheme(
     error = Color(0xFFF2B8B5)
 )
 
+private val BastionTypography = Typography()  // uses Material3 defaults for now
+
+private val BastionShapes = Shapes()  // uses Material3 defaults for now
+
 @Composable
 fun BastionTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
+    val context = LocalContext.current
     val colorScheme = when {
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
         darkTheme -> DarkColors
         else -> LightColors
     }
     MaterialTheme(
         colorScheme = colorScheme,
+        typography = BastionTypography,
+        shapes = BastionShapes,
         content = content
     )
 }
