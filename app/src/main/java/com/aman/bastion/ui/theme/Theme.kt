@@ -51,7 +51,9 @@ private val BastionDarkColors = darkColorScheme(
     onSurfaceVariant    = BastionColors.TextSecondary,
     outline             = BastionColors.BorderSubtle,
     error               = BastionColors.AccentDanger,
-    onError             = Color.White
+    onError             = Color.White,
+    errorContainer      = BastionColors.BadgeLockedBg,
+    onErrorContainer    = BastionColors.AccentDanger
 )
 
 private val BastionTypography = Typography(
