@@ -24,6 +24,8 @@ class InAppRuleRepositoryImpl @Inject constructor(
     override suspend fun save(rule: InAppRule) = dao.upsert(rule.toEntity())
 
     override suspend fun delete(id: String) = dao.delete(id)
+
+    override suspend fun deleteByPackage(packageName: String) = dao.deleteByPackage(packageName)
 }
 
 private fun InAppRuleEntity.toDomain() = InAppRule(

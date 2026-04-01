@@ -35,6 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.aman.bastion.service.DeviceAdminManager
 import com.aman.bastion.ui.theme.BastionColors
 
 @Composable
@@ -58,10 +59,16 @@ fun OnboardingScreen(
     LaunchedEffect(state.accessibilityGranted) {
         if (state.currentStep == 4 && state.accessibilityGranted) viewModel.advance()
     }
+    LaunchedEffect(state.deviceAdminGranted) {
+        if (state.currentStep == 6 && state.deviceAdminGranted) viewModel.advance()
+    }
 
     val notifLauncher = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     } else null
+    val deviceAdminLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { }
 
     Box(
         modifier = Modifier
@@ -79,15 +86,13 @@ fun OnboardingScreen(
         ) { step ->
             when (step) {
                 0 -> StepWelcome(onNext = viewModel::advance)
-                // TODO: notification permission step — skipped for now, no logic implemented
-                // 1 -> StepNotification(
-                //     onGrant = {
-                //         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                //             notifLauncher?.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                //         } else viewModel.advance()
-                //     }
-                // )
-                1 -> { LaunchedEffect(Unit) { viewModel.advance() } }
+                1 -> StepNotification(
+                    onGrant = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            notifLauncher?.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                        } else viewModel.advance()
+                    }
+                )
                 2 -> StepUsageAccess(
                     onGrant = { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
                 )
@@ -114,7 +119,15 @@ fun OnboardingScreen(
                     },
                     onSkip = viewModel::advance
                 )
-                6 -> StepAllSet(
+                6 -> StepDeviceAdmin(
+                    onGrant = {
+                        deviceAdminLauncher.launch(
+                            viewModel.buildDeviceAdminIntent()
+                        )
+                    },
+                    onSkip = viewModel::advance
+                )
+                7 -> StepAllSet(
                     onFinish = {
                         viewModel.markOnboardingDone()
                         onFinished()
@@ -213,6 +226,45 @@ private fun StepBattery(onGrant: () -> Unit, onSkip: () -> Unit) {
             text     = "Skip (not recommended)",
             style    = MaterialTheme.typography.bodySmall,
             color    = BastionColors.TextSecondary,
+            modifier = Modifier.clickable(onClick = onSkip)
+        )
+    }
+}
+
+@Composable
+private fun StepDeviceAdmin(onGrant: () -> Unit, onSkip: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 32.dp),
+        horizontalAlignment = Alignment.Start
+    ) {
+        Text("\uD83D\uDEE1", style = MaterialTheme.typography.displayMedium)
+        Spacer(Modifier.height(24.dp))
+        Text(
+            "Extra protection",
+            style = MaterialTheme.typography.titleLarge,
+            color = BastionColors.TextPrimary
+        )
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "This adds a system-level protection layer so Bastion can keep your lock in place when you're under pressure to switch it off.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = BastionColors.TextSecondary
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Recommended before using hardcore locks.",
+            style = MaterialTheme.typography.bodySmall,
+            color = BastionColors.TextMuted
+        )
+        Spacer(Modifier.height(32.dp))
+        OnboardingCta(label = "Enable extra protection ->", onClick = onGrant)
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = "Skip for now",
+            style = MaterialTheme.typography.bodySmall,
+            color = BastionColors.TextSecondary,
             modifier = Modifier.clickable(onClick = onSkip)
         )
     }

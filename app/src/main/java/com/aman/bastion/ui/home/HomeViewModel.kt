@@ -1,13 +1,14 @@
 package com.aman.bastion.ui.home
 
 import android.content.Context
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.aman.bastion.data.url.dao.UrlRuleDao
+import com.aman.bastion.data.url.entity.UrlRuleEntity
 import com.aman.bastion.domain.catalog.InAppRuleCatalog
 import com.aman.bastion.domain.model.AppRule
 import com.aman.bastion.domain.model.InAppRule
@@ -55,15 +56,18 @@ sealed class ProtectionStatus {
 data class HomeUiState(
     val ruledApps: List<AppListItem> = emptyList(),
     val filteredAllApps: List<AppListItem> = emptyList(),
+    val blockedUrls: List<String> = emptyList(),
     val isLoading: Boolean = true,
     val addPanelExpanded: Boolean = false,
     val addSearchQuery: String = "",
+    val urlDraft: String = "",
     val protectionStatus: ProtectionStatus = ProtectionStatus.None
 )
 
 private data class BaseSnapshot(
     val rules: List<AppRule>,
     val inAppRules: List<InAppRule>,
+    val urlRules: List<String>,
     val cache: Map<String, Pair<String, ImageBitmap>>,
     val packages: List<String>
 )
@@ -74,11 +78,13 @@ private data class BaseSnapshot(
 class HomeViewModel @Inject constructor(
     private val ruleRepo: AppRuleRepository,
     private val inAppRuleRepo: InAppRuleRepository,
+    private val urlRuleDao: UrlRuleDao,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _addPanelExpanded = MutableStateFlow(false)
     private val _addSearchQuery   = MutableStateFlow("")
+    private val _urlDraft         = MutableStateFlow("")
 
     private val allAppInfoCache   = MutableStateFlow<Map<String, Pair<String, ImageBitmap>>>(emptyMap())
     private val allPackagesSorted = MutableStateFlow<List<String>>(emptyList())
@@ -88,25 +94,38 @@ class HomeViewModel @Inject constructor(
     private val _baseSnapshot = combine(
         ruleRepo.getAll(),
         inAppRuleRepo.getAll(),
+        urlRuleDao.getAll(),
         allAppInfoCache,
         allPackagesSorted
-    ) { rules, inAppRules, cache, packages ->
-        BaseSnapshot(rules, inAppRules, cache, packages)
+    ) { rules, inAppRules, urlRules, cache, packages ->
+        BaseSnapshot(
+            rules = rules,
+            inAppRules = inAppRules,
+            urlRules = urlRules.filter { it.isEnabled }.map { it.pattern },
+            cache = cache,
+            packages = packages
+        )
     }
 
     val uiState: StateFlow<HomeUiState> = combine(
         _baseSnapshot,
         _addPanelExpanded,
-        _addSearchQuery
-    ) { snap, expanded, query ->
-        val (rules, inAppRules, cache, packages) = snap
+        _addSearchQuery,
+        _urlDraft
+    ) { snap, expanded, query, urlDraft ->
+        val (rules, inAppRules, urlRules, cache, packages) = snap
         if (cache.isEmpty()) return@combine HomeUiState(isLoading = true)
 
         val ruleMap    = rules.associateBy { it.packageName }
-        val inAppByPkg = inAppRules.filter { it.isEnabled }.groupBy { it.packageName }
+        val inAppByPkg = inAppRules
+            .filter { it.isEnabled && InAppRuleCatalog.hasFeatures(it.packageName) }
+            .groupBy { it.packageName }
+        val protectedPackages = packages.filter { pkg ->
+            ruleMap[pkg] != null || inAppByPkg[pkg]?.isNotEmpty() == true
+        }
 
-        val ruledApps = packages.mapNotNull { pkg ->
-            val rule = ruleMap[pkg] ?: return@mapNotNull null
+        val ruledApps = protectedPackages.mapNotNull { pkg ->
+            val rule = ruleMap[pkg]
             val (name, icon) = cache[pkg] ?: return@mapNotNull null
             buildAppListItem(pkg, name, icon, rule, inAppByPkg[pkg])
         }
@@ -116,18 +135,20 @@ class HomeViewModel @Inject constructor(
                 val (name, icon) = cache[pkg] ?: return@mapNotNull null
                 if (query.isNotBlank() && !name.contains(query, ignoreCase = true)) return@mapNotNull null
                 val rule = ruleMap[pkg]
-                if (rule == null) AppListItem(pkg, name, icon, false, 0L)
-                else buildAppListItem(pkg, name, icon, rule, inAppByPkg[pkg])
+                buildAppListItem(pkg, name, icon, rule, inAppByPkg[pkg])
+                    ?: AppListItem(pkg, name, icon, false, 0L)
             }
         }
 
         HomeUiState(
             ruledApps        = ruledApps,
             filteredAllApps  = filteredAll,
+            blockedUrls      = urlRules,
             isLoading        = false,
             addPanelExpanded = expanded,
             addSearchQuery   = query,
-            protectionStatus = computeProtectionStatus(ruledApps)
+            urlDraft         = urlDraft,
+            protectionStatus = computeProtectionStatus(ruledApps, urlRules)
         )
     }.stateIn(
         scope        = viewModelScope,
@@ -141,8 +162,9 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             val pm = context.packageManager
             val installed = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                .filter { it.flags and ApplicationInfo.FLAG_SYSTEM == 0 }
                 .filter { it.packageName != context.packageName }
+                .filter { it.enabled }
+                .filter { pm.getLaunchIntentForPackage(it.packageName) != null }
                 .sortedBy { it.loadLabel(pm).toString().lowercase() }
 
             val cache = installed.associate { info ->
@@ -160,26 +182,44 @@ class HomeViewModel @Inject constructor(
         pkg: String,
         name: String,
         icon: ImageBitmap,
-        rule: AppRule,
+        rule: AppRule?,
         enabledInApp: List<InAppRule>?
-    ): AppListItem {
+    ): AppListItem? {
         val count      = enabledInApp?.size ?: 0
         val firstLabel = enabledInApp?.firstOrNull()?.let { inApp ->
             InAppRuleCatalog.featuresFor(pkg)
                 .firstOrNull { it.featureId == inApp.featureId }?.shortLabel
         }
+        val hasActiveFullAppRule = rule?.let { hasActiveFullAppRule(it, count) } ?: false
+        if (!hasActiveFullAppRule && count == 0) return null
+
         return AppListItem(
             packageName              = pkg,
             appName                  = name,
             icon                     = icon,
-            isBlocked                = !rule.isHardcoreActive,
-            hardcoreUntilMs          = rule.hardcoreUntilMs,
+            isBlocked                = hasActiveFullAppRule && count == 0 && rule?.isHardcoreActive != true,
+            hardcoreUntilMs          = rule?.hardcoreUntilMs ?: 0L,
             activeInAppRuleCount     = count,
             firstInAppRuleShortLabel = firstLabel
         )
     }
 
+    private fun hasActiveFullAppRule(rule: AppRule, enabledInAppCount: Int): Boolean {
+        val now = System.currentTimeMillis()
+        if (rule.isHardBlocked) {
+            if (rule.hardcoreUntilMs == 0L) return true
+            return rule.hardcoreUntilMs > now
+        }
+        if (rule.dailyLimitMs > 0L) return true
+        if (rule.categoryId != null) return true
+        return false
+    }
+
     private fun computeProtectionStatus(apps: List<AppListItem>): ProtectionStatus {
+        return computeProtectionStatus(apps, emptyList())
+    }
+
+    private fun computeProtectionStatus(apps: List<AppListItem>, blockedUrls: List<String>): ProtectionStatus {
         val hardcoreApp = apps.firstOrNull { it.isHardcoreActive }
         if (hardcoreApp != null) {
             return ProtectionStatus.HardcoreActive(
@@ -188,8 +228,8 @@ class HomeViewModel @Inject constructor(
                 untilMs = hardcoreApp.hardcoreUntilMs
             )
         }
-        if (apps.isEmpty()) return ProtectionStatus.None
-        val chips = apps.map { app ->
+        if (apps.isEmpty() && blockedUrls.isEmpty()) return ProtectionStatus.None
+        val appChips = apps.map { app ->
             val label = when {
                 app.activeInAppRuleCount > 1  -> "${app.activeInAppRuleCount} RULES"
                 app.firstInAppRuleShortLabel != null -> "${app.firstInAppRuleShortLabel} BLOCKED"
@@ -197,9 +237,47 @@ class HomeViewModel @Inject constructor(
             }
             app.appName to label
         }
-        return ProtectionStatus.Active(blockCount = apps.size, chips = chips)
+        val urlChips = blockedUrls.map { pattern -> pattern to "URL" }
+        return ProtectionStatus.Active(
+            blockCount = apps.size + blockedUrls.size,
+            chips = appChips + urlChips
+        )
     }
 
     fun onAddPanelToggle() { _addPanelExpanded.value = !_addPanelExpanded.value }
     fun onAddSearchQuery(q: String) { _addSearchQuery.value = q }
+    fun onUrlDraftChange(q: String) { _urlDraft.value = q }
+
+    fun onAddUrlRule() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val normalized = normalizeUrlPattern(_urlDraft.value)
+            if (normalized.isBlank()) return@launch
+            urlRuleDao.upsert(
+                UrlRuleEntity(
+                    id = normalized,
+                    pattern = normalized,
+                    createdAt = System.currentTimeMillis(),
+                    isEnabled = true
+                )
+            )
+            _urlDraft.value = ""
+        }
+    }
+
+    fun onRemoveUrlRule(pattern: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            urlRuleDao.delete(pattern)
+        }
+    }
+
+    private fun normalizeUrlPattern(raw: String): String {
+        return raw.trim()
+            .lowercase()
+            .removePrefix("https://")
+            .removePrefix("http://")
+            .removePrefix("www.")
+            .trim('/')
+            .substringBefore('#')
+            .substringBefore('?')
+    }
 }

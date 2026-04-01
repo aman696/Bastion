@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Bastion</string>
+    <string name="accessibility_service_description">Bastion uses Accessibility to detect which tab is active inside apps like Instagram, so it can block Reels without blocking your DMs. It never reads your messages or personal content.</string>
 </resources>

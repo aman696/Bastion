@@ -21,6 +21,22 @@ interface AppRuleDao {
     @Query("SELECT * FROM app_rules WHERE package_name = :packageName")
     fun getByPackage(packageName: String): Flow<AppRuleEntity?>
 
+    @Query("SELECT * FROM app_rules WHERE package_name = :packageName LIMIT 1")
+    suspend fun getByPackageSync(packageName: String): AppRuleEntity?
+
+    @Query(
+        """
+        SELECT * FROM app_rules
+        WHERE is_hard_blocked = 1
+        AND hardcore_until_ms > 0
+        AND hardcore_until_ms <= :nowMs
+        """
+    )
+    suspend fun getExpiredHardcoreRules(nowMs: Long): List<AppRuleEntity>
+
     @Query("SELECT * FROM app_rules WHERE category_id = :categoryId")
     fun getByCategory(categoryId: String): Flow<List<AppRuleEntity>>
+
+    @Query("SELECT * FROM app_rules WHERE category_id = :categoryId")
+    suspend fun getByCategorySync(categoryId: String): List<AppRuleEntity>
 }

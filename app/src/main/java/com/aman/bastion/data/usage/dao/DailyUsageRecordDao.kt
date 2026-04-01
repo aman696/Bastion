@@ -23,4 +23,13 @@ interface DailyUsageRecordDao {
 
     @Query("UPDATE daily_usage SET elapsed_ms = elapsed_ms + :deltaMs WHERE package_name = :packageName AND date = :date")
     suspend fun incrementElapsed(packageName: String, date: String, deltaMs: Long)
+
+    @Query(
+        """
+        UPDATE daily_usage
+        SET exclusion_ms = exclusion_ms + :deltaMs
+        WHERE package_name = :packageName AND date = :date
+        """
+    )
+    suspend fun incrementExclusion(packageName: String, date: String, deltaMs: Long)
 }

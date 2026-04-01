@@ -1,5 +1,6 @@
 package com.aman.bastion.ui.appdetail
 
+import android.content.Intent
 import android.content.Context
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -12,21 +13,25 @@ import com.aman.bastion.domain.catalog.InAppRuleCatalog
 import com.aman.bastion.domain.model.AppRule
 import com.aman.bastion.domain.model.InAppRule
 import com.aman.bastion.domain.model.RuleType
-import com.aman.bastion.domain.model.UnlockCondition
 import com.aman.bastion.domain.repository.AppRuleRepository
 import com.aman.bastion.domain.repository.InAppRuleRepository
+import com.aman.bastion.service.BastionServiceBridge
+import com.aman.bastion.service.BlockerServiceStarter
+import com.aman.bastion.service.DeviceAdminManager
+import com.aman.bastion.service.StrictModeManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.util.UUID
 import javax.inject.Inject
 
-enum class BlockModeSelection { NONE, SOFT, HARDCORE }
+enum class BlockModeSelection { HARDCORE }
+enum class ProtectionScopeSelection { FULL_APP, SELECTED_FEATURES }
 
 data class FeatureRowState(
     val feature: InAppFeature,
@@ -40,10 +45,13 @@ data class AppDetailUiState(
     val packageName: String                = "",
     val currentRule: AppRule?              = null,
     val featureRows: List<FeatureRowState> = emptyList(),
-    val selectedMode: BlockModeSelection   = BlockModeSelection.NONE,
+    val selectedScope: ProtectionScopeSelection = ProtectionScopeSelection.FULL_APP,
+    val hasFeatureRestrictions: Boolean    = false,
+    val selectedMode: BlockModeSelection   = BlockModeSelection.HARDCORE,
     val selectedDurationMs: Long           = 3_600_000L,
-    val selectedUnlock: UnlockCondition?   = null,
     val blockNote: String                  = "",
+    val requiresAdminActivation: Boolean   = false,
+    val pendingPostActivationMode: BlockModeSelection? = null,
     val isLoading: Boolean                 = true
 )
 
@@ -51,16 +59,19 @@ data class AppDetailUiState(
 class AppDetailViewModel @Inject constructor(
     private val ruleRepo: AppRuleRepository,
     private val inAppRuleRepo: InAppRuleRepository,
+    private val strictModeManager: StrictModeManager,
+    private val deviceAdminManager: DeviceAdminManager,
     @ApplicationContext private val context: Context,
     savedState: SavedStateHandle
 ) : ViewModel() {
 
     private val packageName: String = savedState["packageName"]!!
 
-    private val _selectedMode     = MutableStateFlow(BlockModeSelection.NONE)
+    private val _selectedMode     = MutableStateFlow(BlockModeSelection.HARDCORE)
+    private val _selectedScope    = MutableStateFlow<ProtectionScopeSelection?>(null)
     private val _selectedDuration = MutableStateFlow(3_600_000L)
-    private val _selectedUnlock   = MutableStateFlow<UnlockCondition?>(null)
     private val _blockNote        = MutableStateFlow("")
+    private val _pendingPostActivationMode = MutableStateFlow<BlockModeSelection?>(null)
 
     // Combine the two repo flows first to stay within the 5-arg limit
     private val _ruleAndInApp = combine(
@@ -68,13 +79,34 @@ class AppDetailViewModel @Inject constructor(
         inAppRuleRepo.getByPackage(packageName)
     ) { rule, inApp -> rule to inApp }
 
+    private val _modeAndScope = combine(
+        _selectedMode,
+        _selectedScope
+    ) { mode, scope ->
+        mode to scope
+    }
+
+    private val _selectionState = combine(
+        _modeAndScope,
+        _selectedDuration,
+        _blockNote,
+        strictModeManager.requiresAdminActivation
+    ) { modeAndScope, duration, note, requiresAdminActivation ->
+        val (mode, scope) = modeAndScope
+        SelectionUiState(
+            mode = mode,
+            scope = scope,
+            duration = duration,
+            note = note,
+            requiresAdminActivation = requiresAdminActivation
+        )
+    }
+
     val uiState: StateFlow<AppDetailUiState> = combine(
         _ruleAndInApp,
-        _selectedMode,
-        _selectedDuration,
-        _selectedUnlock,
-        _blockNote
-    ) { (rule, savedInApp), mode, duration, unlock, note ->
+        _selectionState,
+        _pendingPostActivationMode
+    ) { (rule, savedInApp), selection, pendingMode ->
         val pm      = context.packageManager
         val appInfo = runCatching { pm.getApplicationInfo(packageName, 0) }.getOrNull()
         val appName = appInfo?.loadLabel(pm)?.toString() ?: packageName
@@ -84,11 +116,18 @@ class AppDetailViewModel @Inject constructor(
         val savedMap  = savedInApp.associateBy { it.featureId }
         val featureRows = features.map { feat ->
             val saved = savedMap[feat.featureId]
+            val canonicalId = canonicalRuleId(packageName, feat.featureId)
             FeatureRowState(
                 feature   = feat,
                 isEnabled = saved?.isEnabled ?: false,
-                ruleId    = saved?.id
+                ruleId    = saved?.id ?: canonicalId
             )
+        }
+        val hasFeatureRestrictions = featureRows.any { it.isEnabled }
+        val derivedScope = selection.scope ?: when {
+            featureRows.isEmpty() -> ProtectionScopeSelection.FULL_APP
+            hasFeatureRestrictions -> ProtectionScopeSelection.SELECTED_FEATURES
+            else -> ProtectionScopeSelection.FULL_APP
         }
 
         AppDetailUiState(
@@ -97,23 +136,28 @@ class AppDetailViewModel @Inject constructor(
             packageName        = packageName,
             currentRule        = rule,
             featureRows        = featureRows,
-            selectedMode       = mode,
-            selectedDurationMs = duration,
-            selectedUnlock     = unlock,
-            blockNote          = note,
+            selectedScope      = derivedScope,
+            hasFeatureRestrictions = hasFeatureRestrictions,
+            selectedMode       = selection.mode,
+            selectedDurationMs = selection.duration,
+            blockNote          = selection.note,
+            requiresAdminActivation = selection.requiresAdminActivation,
+            pendingPostActivationMode = pendingMode,
             isLoading          = false
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, AppDetailUiState())
 
     fun onSelectMode(mode: BlockModeSelection)     { _selectedMode.value = mode }
+    fun onSelectScope(scope: ProtectionScopeSelection) { _selectedScope.value = scope }
     fun onSelectDuration(ms: Long)                 { _selectedDuration.value = ms }
-    fun onSelectUnlock(condition: UnlockCondition) { _selectedUnlock.value = condition }
     fun onBlockNoteChange(note: String)            { _blockNote.value = note }
 
     fun onToggleFeatureRule(row: FeatureRowState) {
         viewModelScope.launch {
+            _selectedScope.value = ProtectionScopeSelection.SELECTED_FEATURES
+            val canonicalId = canonicalRuleId(packageName, row.feature.featureId)
             val rule = InAppRule(
-                id          = row.ruleId ?: UUID.randomUUID().toString(),
+                id          = canonicalId,
                 packageName = packageName,
                 featureId   = row.feature.featureId,
                 ruleName    = row.feature.displayName,
@@ -121,6 +165,10 @@ class AppDetailViewModel @Inject constructor(
                 ruleType    = row.feature.ruleType
             )
             inAppRuleRepo.save(rule)
+            if (row.ruleId != null && row.ruleId != canonicalId) {
+                inAppRuleRepo.delete(row.ruleId)
+            }
+            BastionServiceBridge.signatureCacheInvalidated.value = true
         }
     }
 
@@ -128,26 +176,80 @@ class AppDetailViewModel @Inject constructor(
         viewModelScope.launch {
             val now  = System.currentTimeMillis()
             val mode = _selectedMode.value
+            val hasFeatureRestrictions = inAppRuleRepo.getByPackage(packageName)
+                .first()
+                .any { it.isEnabled }
+            val selectedScope = _selectedScope.value ?: if (hasFeatureRestrictions) {
+                ProtectionScopeSelection.SELECTED_FEATURES
+            } else {
+                ProtectionScopeSelection.FULL_APP
+            }
+
+            _selectedScope.value = selectedScope
+            if (selectedScope == ProtectionScopeSelection.FULL_APP) {
+                inAppRuleRepo.deleteByPackage(packageName)
+            }
             ruleRepo.save(
                 AppRule(
                     packageName     = packageName,
                     dailyLimitMs    = 0L,
-                    isHardBlocked   = mode == BlockModeSelection.HARDCORE,
+                    isHardBlocked   = true,
                     categoryId      = null,
                     createdAt       = now,
-                    hardcoreUntilMs = if (mode == BlockModeSelection.HARDCORE)
-                        now + _selectedDuration.value else 0L,
-                    unlockCondition = if (mode == BlockModeSelection.SOFT)
-                        _selectedUnlock.value else null,
+                    hardcoreUntilMs = now + _selectedDuration.value,
+                    unlockCondition = null,
                     blockNote       = _blockNote.value.takeIf { it.isNotBlank() }
                 )
             )
+            if (selectedScope == ProtectionScopeSelection.FULL_APP) {
+                strictModeManager.activate(packageName, _selectedDuration.value)
+            }
+            BastionServiceBridge.signatureCacheInvalidated.value = true
+            BlockerServiceStarter.start(context)
+            _pendingPostActivationMode.value = mode
         }
     }
 
     fun onDeactivateBlock() {
         viewModelScope.launch {
             ruleRepo.delete(packageName)
+            inAppRuleRepo.deleteByPackage(packageName)
+            BastionServiceBridge.signatureCacheInvalidated.value = true
         }
     }
+
+    fun buildAdminActivationIntent(): Intent = deviceAdminManager.getActivationIntent()
+
+    fun onAdminPromptHandled() {
+        strictModeManager.requiresAdminActivation.value = false
+    }
+
+    fun consumePostActivation() {
+        _pendingPostActivationMode.value = null
+    }
+
+    private fun canonicalRuleId(packageName: String, featureId: String): String = when (packageName) {
+        "com.instagram.android" -> when (featureId) {
+            "REELS" -> "instagram_reels_block"
+            "DM" -> "instagram_dm_allow"
+            else -> "${packageName}_${featureId.lowercase()}"
+        }
+
+        "com.google.android.youtube" -> when (featureId) {
+            "SHORTS" -> "youtube_shorts_block"
+            "HOME_FEED" -> "youtube_home_block"
+            "EXPLORE" -> "youtube_explore_block"
+            else -> "${packageName}_${featureId.lowercase()}"
+        }
+
+        else -> "${packageName}_${featureId.lowercase()}"
+    }
+
+    private data class SelectionUiState(
+        val mode: BlockModeSelection,
+        val scope: ProtectionScopeSelection?,
+        val duration: Long,
+        val note: String,
+        val requiresAdminActivation: Boolean
+    )
 }

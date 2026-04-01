@@ -7,6 +7,8 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
+import com.aman.bastion.service.DeviceAdminManager
+import com.aman.bastion.service.BlockerServiceStarter
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -24,12 +26,14 @@ data class OnboardingUiState(
     val usageGranted: Boolean          = false,
     val overlayGranted: Boolean        = false,
     val accessibilityGranted: Boolean  = false,
-    val batteryGranted: Boolean        = false
+    val batteryGranted: Boolean        = false,
+    val deviceAdminGranted: Boolean    = false
 )
 
 @HiltViewModel
 class OnboardingViewModel @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val deviceAdminManager: DeviceAdminManager
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(OnboardingUiState())
@@ -45,22 +49,28 @@ class OnboardingViewModel @Inject constructor(
                     usageGranted         = checkUsageAccess(),
                     overlayGranted       = Settings.canDrawOverlays(context),
                     accessibilityGranted = checkAccessibility(),
-                    batteryGranted       = checkBatteryOptimization()
+                    batteryGranted       = checkBatteryOptimization(),
+                    deviceAdminGranted   = deviceAdminManager.isAdminActive()
                 )
-                delay(1000L)
+                delay(500L)
             }
         }
     }
 
     fun advance() {
         val next = _state.value.currentStep + 1
-        if (next <= 6) _state.value = _state.value.copy(currentStep = next)
+        if (next <= 7) _state.value = _state.value.copy(currentStep = next)
     }
 
     fun markOnboardingDone() {
         context.getSharedPreferences("bastion_prefs", Context.MODE_PRIVATE)
             .edit().putBoolean("onboarding_done", true).apply()
+        if (checkUsageAccess() && Settings.canDrawOverlays(context) && checkAccessibility()) {
+            BlockerServiceStarter.start(context)
+        }
     }
+
+    fun buildDeviceAdminIntent() = deviceAdminManager.getActivationIntent()
 
     private fun checkNotification(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

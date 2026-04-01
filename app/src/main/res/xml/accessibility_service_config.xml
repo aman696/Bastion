@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewScrolled"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds|flagRequestFilterKeyEvents|flagRetrieveInteractiveWindows"
+    android:canRetrieveWindowContent="true"
+    android:notificationTimeout="50"
+    android:packageNames="com.instagram.android,com.zhiliaoapp.musically,com.twitter.android,com.google.android.youtube,com.android.settings,com.samsung.android.settings,com.miui.securitycenter,com.oppo.settings,com.oneplus.settings,com.huawei.systemmanager,com.android.packageinstaller,com.google.android.packageinstaller,com.miui.packageinstaller,com.samsung.android.packageinstaller,com.android.vending,com.android.chrome,com.chrome.beta,com.chrome.dev,com.chrome.canary,com.brave.browser,org.mozilla.firefox,org.mozilla.firefox_beta,com.microsoft.emmx,com.sec.android.app.sbrowser,com.sec.android.app.sbrowser.beta,com.opera.browser,com.opera.mini.native,com.kiwibrowser.browser,com.vivaldi.browser"
+    android:description="@string/accessibility_service_description" />

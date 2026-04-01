@@ -8,4 +8,5 @@ interface InAppRuleRepository {
     fun getAll(): Flow<List<InAppRule>>
     suspend fun save(rule: InAppRule)
     suspend fun delete(id: String)
+    suspend fun deleteByPackage(packageName: String)
 }

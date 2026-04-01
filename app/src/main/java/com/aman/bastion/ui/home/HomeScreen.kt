@@ -91,13 +91,36 @@ fun HomeScreen(
                 )
             }
 
+            if (state.blockedUrls.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "BLOCKED URLS",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = BastionColors.TextSecondary,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+            }
+
+            items(state.blockedUrls, key = { it }) { pattern ->
+                UrlRuleRow(
+                    pattern = pattern,
+                    onRemove = { viewModel.onRemoveUrlRule(pattern) }
+                )
+            }
+
             item {
                 AddProtectionRow(
                     expanded      = state.addPanelExpanded,
                     searchQuery   = state.addSearchQuery,
+                    urlDraft      = state.urlDraft,
                     filteredApps  = state.filteredAllApps,
+                    blockedUrls   = state.blockedUrls,
                     onToggle      = viewModel::onAddPanelToggle,
                     onQueryChange = viewModel::onAddSearchQuery,
+                    onUrlDraftChange = viewModel::onUrlDraftChange,
+                    onAddUrl = viewModel::onAddUrlRule,
+                    onRemoveUrl = viewModel::onRemoveUrlRule,
                     onAppTapped   = { pkg -> onAppTapped(pkg, false) }
                 )
             }
@@ -305,6 +328,38 @@ private fun AppRow(app: AppListItem, onClick: () -> Unit) {
 }
 
 @Composable
+private fun UrlRuleRow(pattern: String, onRemove: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = pattern,
+                style = MaterialTheme.typography.bodyLarge,
+                color = BastionColors.TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "Blocked everywhere Bastion can see browser URLs.",
+                style = MaterialTheme.typography.bodySmall,
+                color = BastionColors.TextSecondary
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = "Remove",
+            style = MaterialTheme.typography.bodySmall,
+            color = BastionColors.AccentDanger,
+            modifier = Modifier.clickable(onClick = onRemove)
+        )
+    }
+}
+
+@Composable
 private fun AppStatusBadge(app: AppListItem) {
     when {
         app.isHardcoreActive -> {
@@ -357,9 +412,14 @@ private fun StatusPill(text: String, bg: Color, fg: Color) {
 private fun AddProtectionRow(
     expanded: Boolean,
     searchQuery: String,
+    urlDraft: String,
     filteredApps: List<AppListItem>,
+    blockedUrls: List<String>,
     onToggle: () -> Unit,
     onQueryChange: (String) -> Unit,
+    onUrlDraftChange: (String) -> Unit,
+    onAddUrl: () -> Unit,
+    onRemoveUrl: (String) -> Unit,
     onAppTapped: (String) -> Unit
 ) {
     Column {
@@ -413,6 +473,66 @@ private fun AddProtectionRow(
                 Spacer(Modifier.height(8.dp))
                 filteredApps.forEach { app ->
                     AppRow(app = app, onClick = { onAppTapped(app.packageName) })
+                }
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text = "Block URLs",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = BastionColors.TextSecondary,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BasicTextField(
+                        modifier = Modifier.weight(1f),
+                        value = urlDraft,
+                        onValueChange = onUrlDraftChange,
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = BastionColors.TextPrimary),
+                        cursorBrush = SolidColor(BastionColors.AccentAmber),
+                        decorationBox = { inner ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(BastionColors.SurfaceElevated)
+                                    .border(1.dp, BastionColors.BorderSubtle, RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                            ) {
+                                if (urlDraft.isEmpty()) {
+                                    Text(
+                                        "example.com or youtube.com/shorts",
+                                        color = BastionColors.TextMuted,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                                inner()
+                            }
+                        }
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(BastionColors.AccentAmber)
+                            .clickable(onClick = onAddUrl)
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Add",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.Black
+                        )
+                    }
+                }
+                if (blockedUrls.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    blockedUrls.forEach { pattern ->
+                        UrlRuleRow(pattern = pattern, onRemove = { onRemoveUrl(pattern) })
+                    }
                 }
                 Spacer(Modifier.height(8.dp))
             }

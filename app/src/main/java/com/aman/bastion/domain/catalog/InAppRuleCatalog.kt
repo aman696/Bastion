@@ -7,43 +7,56 @@ object InAppRuleCatalog {
     private val catalog: Map<String, List<InAppFeature>> = mapOf(
         "com.instagram.android" to listOf(
             InAppFeature(
-                featureId   = "instagram_reels",
-                displayName = "Block Reels feed",
-                shortLabel  = "REELS",
-                description = "Overlay blocks the Reels tab. DMs remain accessible.",
-                ruleType    = RuleType.OVERLAY_BLOCK
+                packageName = "com.instagram.android",
+                featureId = "REELS",
+                displayName = "Reels & Explore",
+                isBlockable = true,
+                isExcludedFromLimit = false,
+                shortLabel = "REELS",
+                description = "Blocks the Reels tab, Explore feed, and inline reel/video content across all surfaces.",
+                ruleType = RuleType.OVERLAY_BLOCK
             ),
             InAppFeature(
-                featureId   = "instagram_explore",
-                displayName = "Block Explore feed",
-                shortLabel  = "EXPLORE",
-                description = "Overlay blocks the Explore tab.",
-                ruleType    = RuleType.OVERLAY_BLOCK
-            ),
-            InAppFeature(
-                featureId   = "instagram_dm_exclusion",
-                displayName = "Exclude DM time from limit",
-                shortLabel  = "DM EXCLUSION",
-                description = "Time spent in DMs won't count toward your Instagram daily limit.",
-                ruleType    = RuleType.NAVIGATION_INTERCEPT
-            )
-        ),
-        "com.zhiliaoapp.musically" to listOf(
-            InAppFeature(
-                featureId   = "tiktok_fyp",
-                displayName = "Block For You feed",
-                shortLabel  = "FOR YOU",
-                description = "Overlay blocks the main TikTok feed.",
-                ruleType    = RuleType.OVERLAY_BLOCK
+                packageName = "com.instagram.android",
+                featureId = "DM",
+                displayName = "Direct Messages",
+                isBlockable = false,
+                isExcludedFromLimit = true,
+                shortLabel = "DM",
+                description = "Time spent in Instagram DMs, including shared DM reels, won't count toward your daily limit.",
+                ruleType = RuleType.NAVIGATION_INTERCEPT
             )
         ),
         "com.google.android.youtube" to listOf(
             InAppFeature(
-                featureId   = "youtube_shorts",
-                displayName = "Block Shorts",
-                shortLabel  = "SHORTS",
-                description = "Overlay blocks the YouTube Shorts tab.",
-                ruleType    = RuleType.OVERLAY_BLOCK
+                packageName = "com.google.android.youtube",
+                featureId = "SHORTS",
+                displayName = "Shorts",
+                isBlockable = true,
+                isExcludedFromLimit = false,
+                shortLabel = "SHORTS",
+                description = "Detects YouTube Shorts structurally and backs out immediately.",
+                ruleType = RuleType.OVERLAY_BLOCK
+            ),
+            InAppFeature(
+                packageName = "com.google.android.youtube",
+                featureId = "HOME_FEED",
+                displayName = "Home Feed",
+                isBlockable = true,
+                isExcludedFromLimit = false,
+                shortLabel = "HOME",
+                description = "Overlay blocks the YouTube home feed.",
+                ruleType = RuleType.OVERLAY_BLOCK
+            ),
+            InAppFeature(
+                packageName = "com.google.android.youtube",
+                featureId = "EXPLORE",
+                displayName = "Explore",
+                isBlockable = true,
+                isExcludedFromLimit = false,
+                shortLabel = "EXPLORE",
+                description = "Overlay blocks the YouTube Explore tab.",
+                ruleType = RuleType.OVERLAY_BLOCK
             )
         )
     )

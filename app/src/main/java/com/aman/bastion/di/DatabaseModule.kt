@@ -6,11 +6,14 @@ import androidx.room.RoomDatabase
 import com.aman.bastion.data.blocking.dao.AppCategoryDao
 import com.aman.bastion.data.blocking.dao.AppRuleDao
 import com.aman.bastion.data.db.AppDatabase
+import com.aman.bastion.data.hardcorelock.dao.HardcoreLockDao
+import com.aman.bastion.data.inapp.dao.InAppSignatureDao
 import com.aman.bastion.data.inapp.dao.InAppRuleDao
 import com.aman.bastion.data.scheduling.dao.ScheduleDao
 import com.aman.bastion.data.service.dao.ServiceStateDao
 import com.aman.bastion.data.usage.dao.DailyUsageRecordDao
 import com.aman.bastion.data.usage.dao.UsageHistoryDao
+import com.aman.bastion.data.url.dao.UrlRuleDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -31,7 +34,13 @@ object DatabaseModule {
             "bastion.db"
         )
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+            .enableMultiInstanceInvalidation()
+            .addMigrations(
+                AppDatabase.MIGRATION_1_2,
+                AppDatabase.MIGRATION_2_3,
+                AppDatabase.MIGRATION_3_4,
+                AppDatabase.MIGRATION_4_5
+            )
             .build()
 
     @Provides
@@ -54,4 +63,13 @@ object DatabaseModule {
 
     @Provides
     fun provideServiceStateDao(db: AppDatabase): ServiceStateDao = db.serviceStateDao()
+
+    @Provides
+    fun provideHardcoreLockDao(db: AppDatabase): HardcoreLockDao = db.hardcoreLockDao()
+
+    @Provides
+    fun provideInAppSignatureDao(db: AppDatabase): InAppSignatureDao = db.inAppSignatureDao()
+
+    @Provides
+    fun provideUrlRuleDao(db: AppDatabase): UrlRuleDao = db.urlRuleDao()
 }

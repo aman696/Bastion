@@ -20,4 +20,7 @@ interface AppCategoryDao {
 
     @Query("SELECT * FROM app_categories WHERE id = :id")
     fun getById(id: String): Flow<AppCategoryEntity?>
+
+    @Query("SELECT * FROM app_categories WHERE id = :id LIMIT 1")
+    suspend fun getByIdSync(id: String): AppCategoryEntity?
 }
