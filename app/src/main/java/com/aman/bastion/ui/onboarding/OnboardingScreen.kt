@@ -79,13 +79,15 @@ fun OnboardingScreen(
         ) { step ->
             when (step) {
                 0 -> StepWelcome(onNext = viewModel::advance)
-                1 -> StepNotification(
-                    onGrant = {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            notifLauncher?.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                        } else viewModel.advance()
-                    }
-                )
+                // TODO: notification permission step — skipped for now, no logic implemented
+                // 1 -> StepNotification(
+                //     onGrant = {
+                //         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                //             notifLauncher?.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                //         } else viewModel.advance()
+                //     }
+                // )
+                1 -> { LaunchedEffect(Unit) { viewModel.advance() } }
                 2 -> StepUsageAccess(
                     onGrant = { context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
                 )
