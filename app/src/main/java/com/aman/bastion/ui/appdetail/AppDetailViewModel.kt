@@ -10,6 +10,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aman.bastion.domain.catalog.InAppFeature
 import com.aman.bastion.domain.catalog.InAppRuleCatalog
+import com.aman.bastion.domain.catalog.InAppRuleCatalog.INSTAGRAM_GUARD_FEATURE_ID
 import com.aman.bastion.domain.model.AppRule
 import com.aman.bastion.domain.model.InAppRule
 import com.aman.bastion.domain.model.RuleType
@@ -119,7 +120,7 @@ class AppDetailViewModel @Inject constructor(
             val canonicalId = canonicalRuleId(packageName, feat.featureId)
             FeatureRowState(
                 feature   = feat,
-                isEnabled = saved?.isEnabled ?: false,
+                isEnabled = isFeatureEnabledForRow(packageName, feat.featureId, savedInApp),
                 ruleId    = saved?.id ?: canonicalId
             )
         }
@@ -155,6 +156,38 @@ class AppDetailViewModel @Inject constructor(
     fun onToggleFeatureRule(row: FeatureRowState) {
         viewModelScope.launch {
             _selectedScope.value = ProtectionScopeSelection.SELECTED_FEATURES
+            if (packageName == "com.instagram.android" &&
+                row.feature.featureId == INSTAGRAM_GUARD_FEATURE_ID
+            ) {
+                for (legacyRuleId in legacyRuleIdsFor(packageName, row.feature.featureId)) {
+                    inAppRuleRepo.delete(legacyRuleId)
+                }
+                if (!row.isEnabled) {
+                    inAppRuleRepo.save(
+                        InAppRule(
+                            id = canonicalRuleId(packageName, "REELS"),
+                            packageName = packageName,
+                            featureId = "REELS",
+                            ruleName = "Reels & Explore",
+                            isEnabled = true,
+                            ruleType = RuleType.OVERLAY_BLOCK
+                        )
+                    )
+                    inAppRuleRepo.save(
+                        InAppRule(
+                            id = canonicalRuleId(packageName, "DM"),
+                            packageName = packageName,
+                            featureId = "DM",
+                            ruleName = "Direct Messages",
+                            isEnabled = true,
+                            ruleType = RuleType.NAVIGATION_INTERCEPT
+                        )
+                    )
+                }
+                BastionServiceBridge.signatureCacheInvalidated.value = true
+                return@launch
+            }
+
             val canonicalId = canonicalRuleId(packageName, row.feature.featureId)
             val rule = InAppRule(
                 id          = canonicalId,
@@ -165,6 +198,11 @@ class AppDetailViewModel @Inject constructor(
                 ruleType    = row.feature.ruleType
             )
             inAppRuleRepo.save(rule)
+            legacyRuleIdsFor(packageName, row.feature.featureId)
+                .filter { it != canonicalId }
+                .forEach { legacyRuleId ->
+                    inAppRuleRepo.delete(legacyRuleId)
+                }
             if (row.ruleId != null && row.ruleId != canonicalId) {
                 inAppRuleRepo.delete(row.ruleId)
             }
@@ -193,7 +231,9 @@ class AppDetailViewModel @Inject constructor(
                 AppRule(
                     packageName     = packageName,
                     dailyLimitMs    = 0L,
-                    isHardBlocked   = true,
+                    isHardBlocked   = selectedScope == ProtectionScopeSelection.FULL_APP ||
+                        (packageName == "com.instagram.android" &&
+                            selectedScope == ProtectionScopeSelection.SELECTED_FEATURES),
                     categoryId      = null,
                     createdAt       = now,
                     hardcoreUntilMs = now + _selectedDuration.value,
@@ -230,6 +270,7 @@ class AppDetailViewModel @Inject constructor(
 
     private fun canonicalRuleId(packageName: String, featureId: String): String = when (packageName) {
         "com.instagram.android" -> when (featureId) {
+            INSTAGRAM_GUARD_FEATURE_ID -> "instagram_guard_block"
             "REELS" -> "instagram_reels_block"
             "DM" -> "instagram_dm_allow"
             else -> "${packageName}_${featureId.lowercase()}"
@@ -243,6 +284,30 @@ class AppDetailViewModel @Inject constructor(
         }
 
         else -> "${packageName}_${featureId.lowercase()}"
+    }
+
+    private fun isFeatureEnabledForRow(
+        packageName: String,
+        featureId: String,
+        savedRules: List<InAppRule>
+    ): Boolean {
+        if (packageName == "com.instagram.android" && featureId == INSTAGRAM_GUARD_FEATURE_ID) {
+            return savedRules.any { rule ->
+                rule.isEnabled && rule.featureId in setOf(INSTAGRAM_GUARD_FEATURE_ID, "REELS", "DM")
+            }
+        }
+        return savedRules.any { rule -> rule.featureId == featureId && rule.isEnabled }
+    }
+
+    private fun legacyRuleIdsFor(packageName: String, featureId: String): List<String> {
+        if (packageName == "com.instagram.android" && featureId == INSTAGRAM_GUARD_FEATURE_ID) {
+            return listOf(
+                canonicalRuleId(packageName, INSTAGRAM_GUARD_FEATURE_ID),
+                canonicalRuleId(packageName, "REELS"),
+                canonicalRuleId(packageName, "DM")
+            )
+        }
+        return listOf(canonicalRuleId(packageName, featureId))
     }
 
     private data class SelectionUiState(

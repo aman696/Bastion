@@ -12,8 +12,14 @@ interface DailyUsageRecordDao {
     @Upsert
     suspend fun upsert(record: DailyUsageRecordEntity)
 
+    @Upsert
+    suspend fun upsertAll(records: List<DailyUsageRecordEntity>)
+
     @Query("SELECT * FROM daily_usage WHERE date = :date")
     fun getForDate(date: String): Flow<List<DailyUsageRecordEntity>>
+
+    @Query("SELECT * FROM daily_usage")
+    suspend fun getAllSync(): List<DailyUsageRecordEntity>
 
     @Query("SELECT * FROM daily_usage WHERE package_name = :packageName AND date = :date LIMIT 1")
     suspend fun getForPackageAndDate(packageName: String, date: String): DailyUsageRecordEntity?

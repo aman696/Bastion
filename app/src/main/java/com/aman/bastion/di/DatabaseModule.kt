@@ -1,11 +1,13 @@
 package com.aman.bastion.di
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.aman.bastion.data.blocking.dao.AppCategoryDao
 import com.aman.bastion.data.blocking.dao.AppRuleDao
 import com.aman.bastion.data.db.AppDatabase
+import com.aman.bastion.data.db.EncryptedDatabaseMigrator
 import com.aman.bastion.data.hardcorelock.dao.HardcoreLockDao
 import com.aman.bastion.data.inapp.dao.InAppSignatureDao
 import com.aman.bastion.data.inapp.dao.InAppRuleDao
@@ -27,12 +29,16 @@ object DatabaseModule {
 
     @Provides
     @Singleton
-    fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase =
+    fun provideAppDatabase(
+        @ApplicationContext context: Context,
+        securePrefs: SharedPreferences
+    ): AppDatabase =
         Room.databaseBuilder(
             context,
             AppDatabase::class.java,
             "bastion.db"
         )
+            .openHelperFactory(EncryptedDatabaseMigrator.prepareFactory(context, securePrefs))
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
             .enableMultiInstanceInvalidation()
             .addMigrations(

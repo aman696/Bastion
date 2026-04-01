@@ -13,11 +13,17 @@ interface UsageHistoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(record: UsageHistoryEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(records: List<UsageHistoryEntity>)
+
     @Query("SELECT * FROM usage_history WHERE package_name = :packageName ORDER BY date DESC")
     fun getForPackage(packageName: String): Flow<List<UsageHistoryEntity>>
 
     @Query("SELECT * FROM usage_history WHERE date >= :from AND date <= :to ORDER BY date DESC")
     fun getForDateRange(from: String, to: String): Flow<List<UsageHistoryEntity>>
+
+    @Query("SELECT * FROM usage_history")
+    suspend fun getAllSync(): List<UsageHistoryEntity>
 
     @Query("DELETE FROM usage_history WHERE date < :date")
     suspend fun deleteOlderThan(date: String)

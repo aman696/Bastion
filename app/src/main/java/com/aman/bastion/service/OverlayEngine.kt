@@ -17,6 +17,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -67,11 +68,18 @@ class OverlayEngine @Inject constructor(
     @ApplicationContext private val context: Context,
     private val hardcoreLockDao: HardcoreLockDao
 ) {
+    private data class BoundedOverlaySpec(
+        val rect: Rect,
+        val blocksTouch: Boolean,
+        val fillBlack: Boolean
+    )
+
 
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val mainHandler = Handler(Looper.getMainLooper())
     private val activeOverlays = mutableMapOf<String, View>()
     private val activeBoundedOverlays = mutableMapOf<String, List<View>>()
+    private val activeBoundedOverlaySpecs = mutableMapOf<String, List<BoundedOverlaySpec>>()
     private val overlayStates = mutableMapOf<String, MutableStateFlow<OverlayType>>()
 
     private var serviceLifecycleOwner = ServiceLifecycleOwner()
@@ -119,6 +127,7 @@ class OverlayEngine @Inject constructor(
                     return@post
                 }
 
+                activeBoundedOverlaySpecs.remove(key)
                 activeBoundedOverlays.remove(key)?.forEach { boundedView ->
                     runCatching { windowManager.removeView(boundedView) }
                 }
@@ -151,6 +160,7 @@ class OverlayEngine @Inject constructor(
             activeOverlays.remove(key)?.let { view ->
                 runCatching { windowManager.removeView(view) }
             }
+            activeBoundedOverlaySpecs.remove(key)
             activeBoundedOverlays.remove(key)?.forEach { view ->
                 runCatching { windowManager.removeView(view) }
             }
@@ -166,6 +176,7 @@ class OverlayEngine @Inject constructor(
                 }
             }
             activeBoundedOverlays.keys.toList().forEach { key ->
+                activeBoundedOverlaySpecs.remove(key)
                 activeBoundedOverlays.remove(key)?.forEach { view ->
                     runCatching { windowManager.removeView(view) }
                 }
@@ -214,43 +225,103 @@ class OverlayEngine @Inject constructor(
         activeOverlays.remove(key)?.let { composeView ->
             runCatching { windowManager.removeView(composeView) }
         }
+        val targetSpecs = buildBoundedOverlaySpecs(type)
+
+        if (targetSpecs.isEmpty()) {
+            activeBoundedOverlaySpecs.remove(key)
+            activeBoundedOverlays.remove(key)?.forEach { view ->
+                runCatching { windowManager.removeView(view) }
+            }
+            return
+        }
+
+        val previousSpecs = activeBoundedOverlaySpecs[key]
+        if (previousSpecs == targetSpecs) {
+            return
+        }
+
+        val existingViews = activeBoundedOverlays[key]
+        if (existingViews != null && existingViews.size == targetSpecs.size) {
+            existingViews.zip(targetSpecs).forEach { (view, spec) ->
+                runCatching {
+                    applyBoundedOverlayStyle(view, spec)
+                    windowManager.updateViewLayout(view, buildBoundedParams(spec))
+                }
+            }
+            activeBoundedOverlaySpecs[key] = targetSpecs
+            return
+        }
+
+        activeBoundedOverlaySpecs.remove(key)
         activeBoundedOverlays.remove(key)?.forEach { view ->
             runCatching { windowManager.removeView(view) }
         }
 
-        val views = type.boundsInScreen
-            .filter { it.width() > 0 && it.height() > 0 }
-            .take(5)
-            .map { rect ->
+        val views = targetSpecs.map { spec ->
                 View(context).apply {
-                    setBackgroundColor(android.graphics.Color.BLACK)
-                    alpha = 1f
+                    isClickable = spec.blocksTouch
+                    isFocusable = false
+                    applyBoundedOverlayStyle(this, spec)
                 }.also { view ->
-                    windowManager.addView(view, buildBoundedParams(rect))
+                    windowManager.addView(view, buildBoundedParams(spec))
                 }
             }
 
         if (views.isNotEmpty()) {
             activeBoundedOverlays[key] = views
+            activeBoundedOverlaySpecs[key] = targetSpecs
         }
     }
 
-    private fun buildBoundedParams(rect: Rect): WindowManager.LayoutParams {
+    private fun buildBoundedOverlaySpecs(type: OverlayType.FeatureBlock): List<BoundedOverlaySpec> {
+        val maskSpecs = type.boundsInScreen
+            .filter { it.width() > 0 && it.height() > 0 }
+            .take(5)
+            .map { rect ->
+                BoundedOverlaySpec(
+                    rect = Rect(rect),
+                    blocksTouch = true,
+                    fillBlack = true
+                )
+            }
+        val touchSpecs = type.touchBlockBoundsInScreen
+            .filter { it.width() > 0 && it.height() > 0 }
+            .take(5)
+            .map { rect ->
+                BoundedOverlaySpec(
+                    rect = Rect(rect),
+                    blocksTouch = true,
+                    fillBlack = false
+                )
+            }
+        return touchSpecs + maskSpecs
+    }
+
+    private fun applyBoundedOverlayStyle(view: View, spec: BoundedOverlaySpec) {
+        if (spec.fillBlack) {
+            view.setBackgroundColor(android.graphics.Color.argb(255, 0, 0, 0))
+            view.alpha = 1f
+        } else {
+            view.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            view.alpha = 1f
+        }
+    }
+
+    private fun buildBoundedParams(spec: BoundedOverlaySpec): WindowManager.LayoutParams {
         val flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
 
         return WindowManager.LayoutParams(
-            rect.width(),
-            rect.height(),
+            spec.rect.width(),
+            spec.rect.height(),
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            flags,
-            PixelFormat.OPAQUE
+            if (spec.blocksTouch) flags else flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            if (spec.fillBlack) PixelFormat.OPAQUE else PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = rect.left
-            y = rect.top
+            x = spec.rect.left
+            y = spec.rect.top
         }
     }
 
@@ -258,6 +329,7 @@ class OverlayEngine @Inject constructor(
     private fun RenderOverlay(state: State<OverlayType>) {
         when (val overlay = state.value) {
             is OverlayType.FeatureBlock -> FeatureBlockOverlayContent(overlay)
+            is OverlayType.InfoBanner -> InfoBannerOverlayContent(overlay)
             is OverlayType.SoftBlock -> SoftBlockOverlayContent(overlay)
             is OverlayType.AppBlock -> AppBlockOverlayContent(overlay)
             OverlayType.AntiCircumvention -> {
@@ -276,16 +348,56 @@ class OverlayEngine @Inject constructor(
             return
         }
 
+        val remaining by produceState(
+            initialValue = type.countdownUntilMs?.let { countdownUntilMs ->
+                maxOf(0L, countdownUntilMs - System.currentTimeMillis())
+            } ?: 0L,
+            key1 = type.countdownUntilMs
+        ) {
+            val countdownUntilMs = type.countdownUntilMs ?: return@produceState
+            value = maxOf(0L, countdownUntilMs - System.currentTimeMillis())
+            while (value > 0L) {
+                delay(1_000L)
+                value = maxOf(0L, countdownUntilMs - System.currentTimeMillis())
+            }
+        }
+
+        val actionLabel = when {
+            type.buttonCommand == NavigationCommand.INSTAGRAM_OPEN_DM -> "Opening messages"
+            type.buttonLabel != null -> "Redirecting"
+            else -> null
+        }
+        val countdownLabel = when {
+            type.countdownUntilMs == null || actionLabel == null -> null
+            remaining > 0L -> "$actionLabel in ${maxOf(1L, (remaining + 999L) / 1_000L)}s"
+            else -> "$actionLabel..."
+        }
+        val buttonEnabled = type.countdownUntilMs == null || remaining > 0L
+        val buttonLabel = when {
+            !buttonEnabled && actionLabel != null -> "$actionLabel..."
+            else -> type.buttonLabel ?: "Go Home"
+        }
+        val message = type.message ?: when {
+            type.buttonCommand == NavigationCommand.INSTAGRAM_OPEN_DM ->
+                "You blocked this. Your inbox stays open."
+            type.allowedAction != null ->
+                "You blocked this. The rest of the app can stay open."
+            else ->
+                "This section is locked right now."
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black),
+                .background(Color(0xED060606)),
             contentAlignment = Alignment.Center
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
-                modifier = Modifier.padding(horizontal = 32.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 32.dp)
             ) {
                 Text(
                     text = "BASTION",
@@ -293,28 +405,82 @@ class OverlayEngine @Inject constructor(
                     color = BastionColors.AccentAmber,
                     letterSpacing = 2.sp
                 )
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(18.dp))
                 Text(
-                    text = "${type.featureName} Blocked",
+                    text = type.featureName,
                     style = MaterialTheme.typography.displayMedium,
-                    color = Color.White,
+                    color = BastionColors.AccentAmber,
                     textAlign = TextAlign.Center
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(14.dp))
                 Text(
-                    text = if (type.allowedAction != null) {
-                        "You blocked this. Your DMs are still open."
-                    } else {
-                        "You blocked this."
-                    },
+                    text = message,
                     style = MaterialTheme.typography.bodyLarge,
                     color = BastionColors.TextSecondary,
                     textAlign = TextAlign.Center
                 )
-                Spacer(Modifier.height(16.dp))
-                OutlinedButton(onClick = ::exitToHome) {
+                countdownLabel?.let { label ->
+                    Spacer(Modifier.height(18.dp))
                     Text(
-                        text = "Go Home",
+                        text = label,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = BastionColors.TextPrimary,
+                        textAlign = TextAlign.Center
+                    )
+                }
+                Spacer(Modifier.height(28.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(
+                            if (buttonEnabled) BastionColors.AccentAmber else BastionColors.SurfaceElevated
+                        )
+                        .clickable(enabled = buttonEnabled) {
+                            type.buttonCommand?.let { command ->
+                                BastionServiceBridge.navigationCommand.value = command
+                            } ?: exitToHome()
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = buttonLabel,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (buttonEnabled) Color(0xFF18130A) else BastionColors.TextMuted
+                    )
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun InfoBannerOverlayContent(type: OverlayType.InfoBanner) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 18.dp, vertical = 22.dp),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(BastionColors.Surface)
+                    .border(1.dp, BastionColors.BorderSubtle, RoundedCornerShape(22.dp))
+                    .padding(horizontal = 18.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Text(
+                    text = type.title.uppercase(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = BastionColors.AccentAmber
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = type.body,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = BastionColors.TextPrimary
                     )
                 }
@@ -327,14 +493,30 @@ class OverlayEngine @Inject constructor(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF0D0505)),
+                .background(BastionColors.Background),
             contentAlignment = Alignment.Center
         ) {
             Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
+                horizontalAlignment = Alignment.Start,
                 verticalArrangement = Arrangement.Center,
-                modifier = Modifier.padding(horizontal = 32.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(BastionColors.HardcoreCardBg)
+                    .border(
+                        1.dp,
+                        BastionColors.AccentDanger.copy(alpha = 0.45f),
+                        RoundedCornerShape(28.dp)
+                    )
+                    .padding(horizontal = 24.dp, vertical = 28.dp)
             ) {
+                Text(
+                    text = "HARDCORE LOCK",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = BastionColors.AccentDanger
+                )
+                Spacer(Modifier.height(14.dp))
                 if (type.lockedUntilMs > 0L) {
                     val remaining by produceState(
                         initialValue = type.lockedUntilMs - System.currentTimeMillis(),
@@ -352,26 +534,35 @@ class OverlayEngine @Inject constructor(
                         color = BastionColors.AccentDanger,
                         fontFamily = FontFamily.Monospace
                     )
-                    Spacer(Modifier.height(24.dp))
+                    Spacer(Modifier.height(22.dp))
                 }
 
                 Text(
                     text = type.appLabel,
                     style = MaterialTheme.typography.titleLarge,
-                    color = Color.White,
-                    textAlign = TextAlign.Center
+                    color = BastionColors.TextPrimary
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "You set this lock. Come back later.",
+                    text = "This app is closed until the timer ends. Bastion keeps the lock local on this phone only.",
                     style = MaterialTheme.typography.bodyLarge,
                     color = BastionColors.TextSecondary,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Start
                 )
-                Spacer(Modifier.height(24.dp))
-                OutlinedButton(onClick = ::exitToHome) {
+                Spacer(Modifier.height(22.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(BastionColors.SurfaceElevated)
+                        .border(1.dp, BastionColors.BorderSubtle, RoundedCornerShape(18.dp))
+                        .clickable(onClick = ::exitToHome),
+                    contentAlignment = Alignment.Center
+                ) {
                     Text(
                         text = "Go Home",
+                        style = MaterialTheme.typography.titleMedium,
                         color = BastionColors.TextPrimary
                     )
                 }
@@ -608,7 +799,17 @@ sealed class OverlayType {
         val featureName: String,
         val mode: FeatureBlockMode = FeatureBlockMode.FULLSCREEN,
         val boundsInScreen: List<Rect> = emptyList(),
-        val allowedAction: String? = null
+        val touchBlockBoundsInScreen: List<Rect> = emptyList(),
+        val allowedAction: String? = null,
+        val message: String? = null,
+        val countdownUntilMs: Long? = null,
+        val buttonLabel: String? = null,
+        val buttonCommand: NavigationCommand? = null
+    ) : OverlayType()
+
+    data class InfoBanner(
+        val title: String,
+        val body: String
     ) : OverlayType()
 
     data class SoftBlock(

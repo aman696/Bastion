@@ -90,6 +90,8 @@ dependencies {
 
     // Security
     implementation(libs.androidx.security.crypto)
+    implementation(libs.androidx.sqlite)
+    implementation("net.zetetic:sqlcipher-android:4.14.0@aar")
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)

@@ -1,7 +1,11 @@
 package com.aman.bastion.service.engine
 
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.view.accessibility.AccessibilityNodeInfo
+import dagger.hilt.android.qualifiers.ApplicationContext
+import android.content.Context
 import com.aman.bastion.data.url.dao.UrlRuleDao
 import com.aman.bastion.service.BastionServiceBridge
 import com.aman.bastion.service.NavigationCommand
@@ -10,24 +14,33 @@ import javax.inject.Singleton
 
 @Singleton
 class UrlBlockEngine @Inject constructor(
-    private val urlRuleDao: UrlRuleDao
+    private val urlRuleDao: UrlRuleDao,
+    @ApplicationContext private val context: Context
 ) {
 
     private var cachedPatterns: List<String> = emptyList()
+    private var adultSitesEnabled: Boolean = false
+    private var builtInAdultDomains: Set<String> = emptySet()
     private var lastCacheRefreshMs: Long = 0L
     private var lastBlockedKey: String? = null
     private var lastBlockedAtMs: Long = 0L
+    private var cachedBrowserPackages: Set<String>? = null
 
     suspend fun evaluate(packageName: String, rootNode: AccessibilityNodeInfo) {
         try {
             refreshCacheIfNeeded()
-            if (cachedPatterns.isEmpty()) return
+            if (cachedPatterns.isEmpty() && !adultSitesEnabled) return
 
             val currentUrl = extractCurrentUrl(packageName, rootNode) ?: return
             val normalizedUrl = normalizeValue(currentUrl)
             if (normalizedUrl.isBlank()) return
 
-            val matchedPattern = cachedPatterns.firstOrNull { matches(normalizedUrl, it) } ?: return
+            val matchedPattern = cachedPatterns.firstOrNull { matches(normalizedUrl, it) }
+                ?: if (adultSitesEnabled && matchesBuiltInAdultDomain(normalizedUrl)) {
+                    BUILTIN_ADULT_SITES_RULE_ID
+                } else {
+                    return
+                }
             val key = "$packageName|$matchedPattern|$normalizedUrl"
             val now = System.currentTimeMillis()
             if (lastBlockedKey == key && now - lastBlockedAtMs < 1_500L) return
@@ -41,10 +54,22 @@ class UrlBlockEngine @Inject constructor(
         }
     }
 
+    fun supportsPackage(packageName: String): Boolean =
+        knownBrowserPackages().contains(packageName) || refreshBrowserPackages().contains(packageName)
+
     private suspend fun refreshCacheIfNeeded() {
         val now = System.currentTimeMillis()
         if (now - lastCacheRefreshMs > 10_000L) {
-            cachedPatterns = urlRuleDao.getEnabledSync().map { it.pattern }
+            val enabledRules = urlRuleDao.getEnabledSync()
+            adultSitesEnabled = enabledRules.any { it.id == BUILTIN_ADULT_SITES_RULE_ID }
+            cachedPatterns = enabledRules
+                .asSequence()
+                .filterNot { it.id == BUILTIN_ADULT_SITES_RULE_ID }
+                .map { it.pattern }
+                .toList()
+            if (builtInAdultDomains.isEmpty()) {
+                builtInAdultDomains = loadBuiltInAdultDomains()
+            }
             lastCacheRefreshMs = now
         }
     }
@@ -102,11 +127,21 @@ class UrlBlockEngine @Inject constructor(
 
     private fun matches(normalizedUrl: String, pattern: String): Boolean {
         if (normalizedUrl.contains(pattern)) return true
-        val host = Uri.parse("https://$normalizedUrl").host
-            ?.removePrefix("www.")
-            ?.lowercase()
-            ?: return false
+        val host = extractHost(normalizedUrl) ?: return false
         return host == pattern || host.endsWith(".$pattern")
+    }
+
+    private fun matchesBuiltInAdultDomain(normalizedUrl: String): Boolean {
+        val host = extractHost(normalizedUrl) ?: return false
+        if (builtInAdultDomains.contains(host)) return true
+
+        var index = host.indexOf('.')
+        while (index != -1) {
+            val parent = host.substring(index + 1)
+            if (builtInAdultDomains.contains(parent)) return true
+            index = host.indexOf('.', index + 1)
+        }
+        return false
     }
 
     private fun normalizeValue(raw: String): String {
@@ -121,7 +156,51 @@ class UrlBlockEngine @Inject constructor(
             .substringBefore('#')
     }
 
+    private fun extractHost(normalizedUrl: String): String? {
+        return Uri.parse("https://$normalizedUrl").host
+            ?.removePrefix("www.")
+            ?.lowercase()
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    private fun loadBuiltInAdultDomains(): Set<String> {
+        return runCatching {
+            context.assets.open("adult_domains.txt")
+                .bufferedReader()
+                .useLines { lines ->
+                    lines.map { it.trim().lowercase() }
+                        .filter { it.isNotBlank() && !it.startsWith("#") }
+                        .toSet()
+                }
+        }.getOrDefault(emptySet())
+    }
+
+    private fun knownBrowserPackages(): Set<String> {
+        cachedBrowserPackages?.let { return it }
+        return refreshBrowserPackages()
+    }
+
+    private fun refreshBrowserPackages(): Set<String> {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com")).apply {
+            addCategory(Intent.CATEGORY_BROWSABLE)
+        }
+        val resolved = runCatching {
+            context.packageManager.queryIntentActivities(
+                intent,
+                PackageManager.MATCH_DEFAULT_ONLY
+            )
+        }.getOrDefault(emptyList())
+
+        val dynamicBrowsers = resolved.mapNotNull { it.activityInfo?.packageName }.toSet()
+        val merged = dynamicBrowsers + SUPPORTED_BROWSER_PACKAGES
+        cachedBrowserPackages = merged
+        return merged
+    }
+
     companion object {
+        const val BUILTIN_ADULT_SITES_RULE_ID = "__builtin_adult_sites__"
+
         val SUPPORTED_BROWSER_PACKAGES = setOf(
             "com.android.chrome",
             "com.chrome.beta",

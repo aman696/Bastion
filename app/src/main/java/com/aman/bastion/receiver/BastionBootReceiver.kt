@@ -20,13 +20,28 @@ class BastionBootReceiver : BroadcastReceiver() {
     lateinit var scheduleEngine: ScheduleEngine
 
     override fun onReceive(context: Context, intent: Intent?) {
-        ContextCompat.startForegroundService(
-            context,
-            Intent(context, BastionForegroundService::class.java)
-        )
+        val action = intent?.action ?: return
+        if (action !in ALLOWED_ACTIONS) return
 
+        val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            scheduleEngine.scheduleAlarms()
+            try {
+                ContextCompat.startForegroundService(
+                    context,
+                    Intent(context, BastionForegroundService::class.java)
+                )
+                scheduleEngine.scheduleAlarms()
+            } finally {
+                pendingResult.finish()
+            }
         }
+    }
+
+    companion object {
+        private val ALLOWED_ACTIONS = setOf(
+            Intent.ACTION_BOOT_COMPLETED,
+            Intent.ACTION_LOCKED_BOOT_COMPLETED,
+            Intent.ACTION_MY_PACKAGE_REPLACED
+        )
     }
 }

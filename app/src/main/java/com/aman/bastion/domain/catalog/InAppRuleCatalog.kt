@@ -3,28 +3,19 @@ package com.aman.bastion.domain.catalog
 import com.aman.bastion.domain.model.RuleType
 
 object InAppRuleCatalog {
+    const val INSTAGRAM_GUARD_FEATURE_ID = "INSTAGRAM_GUARD"
 
     private val catalog: Map<String, List<InAppFeature>> = mapOf(
         "com.instagram.android" to listOf(
             InAppFeature(
                 packageName = "com.instagram.android",
-                featureId = "REELS",
-                displayName = "Reels & Explore",
+                featureId = INSTAGRAM_GUARD_FEATURE_ID,
+                displayName = "Instagram Guard",
                 isBlockable = true,
                 isExcludedFromLimit = false,
-                shortLabel = "REELS",
-                description = "Blocks the Reels tab, Explore feed, and inline reel/video content across all surfaces.",
+                shortLabel = "IG GUARD",
+                description = "One switch for Instagram: blocks Reels and Explore while still allowing Home, normal DMs, and shared DM reels.",
                 ruleType = RuleType.OVERLAY_BLOCK
-            ),
-            InAppFeature(
-                packageName = "com.instagram.android",
-                featureId = "DM",
-                displayName = "Direct Messages",
-                isBlockable = false,
-                isExcludedFromLimit = true,
-                shortLabel = "DM",
-                description = "Time spent in Instagram DMs, including shared DM reels, won't count toward your daily limit.",
-                ruleType = RuleType.NAVIGATION_INTERCEPT
             )
         ),
         "com.google.android.youtube" to listOf(

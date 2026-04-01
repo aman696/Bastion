@@ -12,6 +12,9 @@ interface InAppRuleDao {
     @Upsert
     suspend fun upsert(rule: InAppRuleEntity)
 
+    @Upsert
+    suspend fun upsertAll(rules: List<InAppRuleEntity>)
+
     @Query("DELETE FROM inapp_rules WHERE id = :id")
     suspend fun delete(id: String)
 
@@ -26,4 +29,7 @@ interface InAppRuleDao {
 
     @Query("SELECT * FROM inapp_rules")
     fun getAll(): Flow<List<InAppRuleEntity>>
+
+    @Query("SELECT * FROM inapp_rules")
+    suspend fun getAllSync(): List<InAppRuleEntity>
 }

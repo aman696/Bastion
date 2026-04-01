@@ -12,11 +12,17 @@ interface AppRuleDao {
     @Upsert
     suspend fun upsert(rule: AppRuleEntity)
 
+    @Upsert
+    suspend fun upsertAll(rules: List<AppRuleEntity>)
+
     @Query("DELETE FROM app_rules WHERE package_name = :packageName")
     suspend fun delete(packageName: String)
 
     @Query("SELECT * FROM app_rules")
     fun getAll(): Flow<List<AppRuleEntity>>
+
+    @Query("SELECT * FROM app_rules")
+    suspend fun getAllSync(): List<AppRuleEntity>
 
     @Query("SELECT * FROM app_rules WHERE package_name = :packageName")
     fun getByPackage(packageName: String): Flow<AppRuleEntity?>
@@ -27,8 +33,7 @@ interface AppRuleDao {
     @Query(
         """
         SELECT * FROM app_rules
-        WHERE is_hard_blocked = 1
-        AND hardcore_until_ms > 0
+        WHERE hardcore_until_ms > 0
         AND hardcore_until_ms <= :nowMs
         """
     )

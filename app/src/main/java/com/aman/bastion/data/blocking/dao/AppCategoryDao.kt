@@ -12,11 +12,17 @@ interface AppCategoryDao {
     @Upsert
     suspend fun upsert(category: AppCategoryEntity)
 
+    @Upsert
+    suspend fun upsertAll(categories: List<AppCategoryEntity>)
+
     @Query("DELETE FROM app_categories WHERE id = :id")
     suspend fun delete(id: String)
 
     @Query("SELECT * FROM app_categories")
     fun getAll(): Flow<List<AppCategoryEntity>>
+
+    @Query("SELECT * FROM app_categories")
+    suspend fun getAllSync(): List<AppCategoryEntity>
 
     @Query("SELECT * FROM app_categories WHERE id = :id")
     fun getById(id: String): Flow<AppCategoryEntity?>

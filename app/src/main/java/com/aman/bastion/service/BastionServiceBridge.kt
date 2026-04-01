@@ -16,7 +16,11 @@ object BastionServiceBridge {
 
 enum class NavigationCommand {
     HOME,
-    BACK
+    BACK,
+    BACK_THEN_HOME,
+    BACK_TO_APP_HOME,
+    INSTAGRAM_OPEN_DM,
+    INSTAGRAM_GO_HOME_THEN_EXIT
 }
 
 enum class InAppBlockAction {
@@ -33,6 +37,7 @@ data class InAppScreenState(
     val featureId: String? = null,
     val blockAction: InAppBlockAction = InAppBlockAction.AUTO,
     val overlayBounds: List<Rect> = emptyList(),
+    val touchBlockBounds: List<Rect> = emptyList(),
     val isExcludedFromLimit: Boolean = false,
     val timestampMs: Long = System.currentTimeMillis()
 )

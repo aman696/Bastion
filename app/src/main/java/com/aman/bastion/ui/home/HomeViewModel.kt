@@ -1,6 +1,7 @@
 package com.aman.bastion.ui.home
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -14,6 +15,7 @@ import com.aman.bastion.domain.model.AppRule
 import com.aman.bastion.domain.model.InAppRule
 import com.aman.bastion.domain.repository.AppRuleRepository
 import com.aman.bastion.domain.repository.InAppRuleRepository
+import com.aman.bastion.service.engine.UrlBlockEngine
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +59,7 @@ data class HomeUiState(
     val ruledApps: List<AppListItem> = emptyList(),
     val filteredAllApps: List<AppListItem> = emptyList(),
     val blockedUrls: List<String> = emptyList(),
+    val adultSitesEnabled: Boolean = false,
     val isLoading: Boolean = true,
     val addPanelExpanded: Boolean = false,
     val addSearchQuery: String = "",
@@ -67,7 +70,7 @@ data class HomeUiState(
 private data class BaseSnapshot(
     val rules: List<AppRule>,
     val inAppRules: List<InAppRule>,
-    val urlRules: List<String>,
+    val urlRules: List<UrlRuleEntity>,
     val cache: Map<String, Pair<String, ImageBitmap>>,
     val packages: List<String>
 )
@@ -101,7 +104,7 @@ class HomeViewModel @Inject constructor(
         BaseSnapshot(
             rules = rules,
             inAppRules = inAppRules,
-            urlRules = urlRules.filter { it.isEnabled }.map { it.pattern },
+            urlRules = urlRules,
             cache = cache,
             packages = packages
         )
@@ -115,6 +118,11 @@ class HomeViewModel @Inject constructor(
     ) { snap, expanded, query, urlDraft ->
         val (rules, inAppRules, urlRules, cache, packages) = snap
         if (cache.isEmpty()) return@combine HomeUiState(isLoading = true)
+        val enabledUrlRules = urlRules.filter { it.isEnabled }
+        val adultSitesEnabled = enabledUrlRules.any { it.id == UrlBlockEngine.BUILTIN_ADULT_SITES_RULE_ID }
+        val manualUrlRules = enabledUrlRules
+            .filterNot { it.id == UrlBlockEngine.BUILTIN_ADULT_SITES_RULE_ID }
+            .map { it.pattern }
 
         val ruleMap    = rules.associateBy { it.packageName }
         val inAppByPkg = inAppRules
@@ -130,25 +138,24 @@ class HomeViewModel @Inject constructor(
             buildAppListItem(pkg, name, icon, rule, inAppByPkg[pkg])
         }
 
-        val filteredAll = if (!expanded) emptyList() else {
-            packages.mapNotNull { pkg ->
-                val (name, icon) = cache[pkg] ?: return@mapNotNull null
-                if (query.isNotBlank() && !name.contains(query, ignoreCase = true)) return@mapNotNull null
-                val rule = ruleMap[pkg]
-                buildAppListItem(pkg, name, icon, rule, inAppByPkg[pkg])
-                    ?: AppListItem(pkg, name, icon, false, 0L)
-            }
+        val filteredAll = packages.mapNotNull { pkg ->
+            val (name, icon) = cache[pkg] ?: return@mapNotNull null
+            if (query.isNotBlank() && !name.contains(query, ignoreCase = true)) return@mapNotNull null
+            val rule = ruleMap[pkg]
+            buildAppListItem(pkg, name, icon, rule, inAppByPkg[pkg])
+                ?: AppListItem(pkg, name, icon, false, 0L)
         }
 
         HomeUiState(
             ruledApps        = ruledApps,
             filteredAllApps  = filteredAll,
-            blockedUrls      = urlRules,
+            blockedUrls      = manualUrlRules,
+            adultSitesEnabled = adultSitesEnabled,
             isLoading        = false,
             addPanelExpanded = expanded,
             addSearchQuery   = query,
             urlDraft         = urlDraft,
-            protectionStatus = computeProtectionStatus(ruledApps, urlRules)
+            protectionStatus = computeProtectionStatus(ruledApps, manualUrlRules, adultSitesEnabled)
         )
     }.stateIn(
         scope        = viewModelScope,
@@ -161,10 +168,14 @@ class HomeViewModel @Inject constructor(
     private fun loadAppInfoCache() {
         viewModelScope.launch(Dispatchers.IO) {
             val pm = context.packageManager
-            val installed = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+            val launcherIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+            }
+            val installed = pm.queryIntentActivities(launcherIntent, PackageManager.MATCH_ALL)
+                .mapNotNull { it.activityInfo?.applicationInfo }
+                .distinctBy { it.packageName }
                 .filter { it.packageName != context.packageName }
                 .filter { it.enabled }
-                .filter { pm.getLaunchIntentForPackage(it.packageName) != null }
                 .sortedBy { it.loadLabel(pm).toString().lowercase() }
 
             val cache = installed.associate { info ->
@@ -216,10 +227,14 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun computeProtectionStatus(apps: List<AppListItem>): ProtectionStatus {
-        return computeProtectionStatus(apps, emptyList())
+        return computeProtectionStatus(apps, emptyList(), false)
     }
 
-    private fun computeProtectionStatus(apps: List<AppListItem>, blockedUrls: List<String>): ProtectionStatus {
+    private fun computeProtectionStatus(
+        apps: List<AppListItem>,
+        blockedUrls: List<String>,
+        adultSitesEnabled: Boolean
+    ): ProtectionStatus {
         val hardcoreApp = apps.firstOrNull { it.isHardcoreActive }
         if (hardcoreApp != null) {
             return ProtectionStatus.HardcoreActive(
@@ -228,7 +243,7 @@ class HomeViewModel @Inject constructor(
                 untilMs = hardcoreApp.hardcoreUntilMs
             )
         }
-        if (apps.isEmpty() && blockedUrls.isEmpty()) return ProtectionStatus.None
+        if (apps.isEmpty() && blockedUrls.isEmpty() && !adultSitesEnabled) return ProtectionStatus.None
         val appChips = apps.map { app ->
             val label = when {
                 app.activeInAppRuleCount > 1  -> "${app.activeInAppRuleCount} RULES"
@@ -238,9 +253,14 @@ class HomeViewModel @Inject constructor(
             app.appName to label
         }
         val urlChips = blockedUrls.map { pattern -> pattern to "URL" }
+        val builtInUrlChips = if (adultSitesEnabled) {
+            listOf("Adult Sites" to "URL")
+        } else {
+            emptyList()
+        }
         return ProtectionStatus.Active(
-            blockCount = apps.size + blockedUrls.size,
-            chips = appChips + urlChips
+            blockCount = apps.size + blockedUrls.size + builtInUrlChips.size,
+            chips = appChips + builtInUrlChips + urlChips
         )
     }
 
@@ -261,6 +281,21 @@ class HomeViewModel @Inject constructor(
                 )
             )
             _urlDraft.value = ""
+        }
+    }
+
+    fun onToggleAdultSites() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val existing = urlRuleDao.getByIdSync(UrlBlockEngine.BUILTIN_ADULT_SITES_RULE_ID)
+            val nextEnabled = !(existing?.isEnabled ?: false)
+            urlRuleDao.upsert(
+                UrlRuleEntity(
+                    id = UrlBlockEngine.BUILTIN_ADULT_SITES_RULE_ID,
+                    pattern = UrlBlockEngine.BUILTIN_ADULT_SITES_RULE_ID,
+                    createdAt = existing?.createdAt ?: System.currentTimeMillis(),
+                    isEnabled = nextEnabled
+                )
+            )
         }
     }
 

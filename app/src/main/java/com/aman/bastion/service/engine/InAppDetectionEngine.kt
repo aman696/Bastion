@@ -1,10 +1,12 @@
 package com.aman.bastion.service.engine
 
 import android.graphics.Rect
+import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.aman.bastion.data.inapp.dao.InAppRuleDao
 import com.aman.bastion.data.inapp.dao.InAppSignatureDao
 import com.aman.bastion.data.inapp.entity.InAppSignatureEntity
+import com.aman.bastion.domain.catalog.InAppRuleCatalog.INSTAGRAM_GUARD_FEATURE_ID
 import com.aman.bastion.service.BastionServiceBridge
 import com.aman.bastion.service.InAppBlockAction
 import com.aman.bastion.service.InAppScreenState
@@ -22,6 +24,7 @@ class InAppDetectionEngine @Inject constructor(
         val featureId: String? = screenState,
         val blockAction: InAppBlockAction = InAppBlockAction.AUTO,
         val overlayBounds: List<Rect> = emptyList(),
+        val touchBlockBounds: List<Rect> = emptyList(),
         val isExcludedFromLimit: Boolean = false
     )
 
@@ -42,6 +45,18 @@ class InAppDetectionEngine @Inject constructor(
     }
 
     fun evaluate(packageName: String, rootNode: AccessibilityNodeInfo) {
+        evaluate(
+            packageName = packageName,
+            rootNode = rootNode,
+            eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+        )
+    }
+
+    fun evaluate(
+        packageName: String,
+        rootNode: AccessibilityNodeInfo,
+        eventType: Int
+    ) {
         try {
             val detectedState = when (packageName) {
                 INSTAGRAM_PACKAGE -> detectInstagramState(rootNode)
@@ -78,7 +93,7 @@ class InAppDetectionEngine @Inject constructor(
         return detection.copy(
             isExcludedFromLimit = packageName == INSTAGRAM_PACKAGE &&
                 detection.screenState in setOf("DM", "DM_REEL_EXCEPTION") &&
-                "DM" in enabledFeatures
+                enabledFeatures.any { it in setOf(INSTAGRAM_GUARD_FEATURE_ID, "DM") }
         )
     }
 
@@ -97,6 +112,7 @@ class InAppDetectionEngine @Inject constructor(
             featureId = detection.featureId,
             blockAction = detection.blockAction,
             overlayBounds = detection.overlayBounds,
+            touchBlockBounds = detection.touchBlockBounds,
             isExcludedFromLimit = detection.isExcludedFromLimit
         )
 
@@ -105,6 +121,7 @@ class InAppDetectionEngine @Inject constructor(
             current?.featureId == nextState.featureId &&
             current?.blockAction == nextState.blockAction &&
             current?.overlayBounds == nextState.overlayBounds &&
+            current?.touchBlockBounds == nextState.touchBlockBounds &&
             current?.isExcludedFromLimit == nextState.isExcludedFromLimit
 
         if (!isSameState) {
@@ -178,6 +195,11 @@ class InAppDetectionEngine @Inject constructor(
     }
 
     private fun detectInstagramState(root: AccessibilityNodeInfo): DetectionResult? {
+        val isSearchTabSelected = isSelectedViewIdOrDescendant(
+            root,
+            "com.instagram.android:id/search_tab"
+        )
+
         val hasClips = hasViewId(root, "com.instagram.android:id/root_clips_layout")
         if (hasClips) {
             val hasDmBar = hasViewId(root, "com.instagram.android:id/reel_viewer_message_composer")
@@ -209,7 +231,7 @@ class InAppDetectionEngine @Inject constructor(
         }
 
         val hasExplore = hasViewId(root, "com.instagram.android:id/explore_action_bar") &&
-            isSelectedViewId(root, "com.instagram.android:id/search_tab")
+            isSearchTabSelected
         if (hasExplore) {
             return DetectionResult(
                 screenState = "EXPLORE",
@@ -218,45 +240,50 @@ class InAppDetectionEngine @Inject constructor(
             )
         }
 
-        val hasHome = hasViewId(root, "com.instagram.android:id/main_feed_action_bar")
-        if (hasHome) {
-            val videoBounds = findVisibleBoundsByViewIds(
-                root,
-                listOf(
-                    "com.instagram.android:id/video_container",
-                    "com.instagram.android:id/clips_video_container"
-                )
-            )
-            val hasVisibleVideoPost = hasVisibleContentDescRegex(
-                root,
-                ".*posted a (video|reel).*"
-            )
-            val fallbackBounds = if (videoBounds.isEmpty() && hasVisibleVideoPost) {
-                findVisibleBoundsByViewIds(
-                    root,
-                    listOf(
-                        "com.instagram.android:id/media_group",
-                        "com.instagram.android:id/video_container",
-                        "com.instagram.android:id/clips_video_container"
-                    )
-                )
-            } else {
-                emptyList()
-            }
-            val targetBounds = (videoBounds + fallbackBounds)
-                .normalizeBounds()
-                .take(MAX_HOME_REEL_BOUNDS)
-            if (targetBounds.isNotEmpty()) {
-                return DetectionResult(
-                    screenState = "HOME",
-                    featureId = "HOME",
-                    blockAction = InAppBlockAction.BOUNDED_OVERLAY,
-                    overlayBounds = targetBounds
-                )
-            }
-        }
-
         return null
+    }
+
+    private fun buildInstagramHomeFeedOverlayBounds(root: AccessibilityNodeInfo): List<Rect> {
+        val rootRect = Rect().also(root::getBoundsInScreen)
+        if (rootRect.isEmpty) return emptyList()
+
+        val actionBarBounds = findVisibleBoundsByViewIds(
+            root,
+            listOf("com.instagram.android:id/main_feed_action_bar")
+        )
+        val navBounds = findVisibleBoundsByViewIds(
+            root,
+            listOf(
+                "com.instagram.android:id/tab_bar",
+                "com.instagram.android:id/bottom_tab_bar"
+            )
+        )
+
+        val storyBounds = findVisibleBoundsByContentDescRegex(
+            root = root,
+            pattern = "story",
+            topThresholdPx = rootRect.top + (rootRect.height() / 2)
+        )
+
+        val actionBarBottom = actionBarBounds.maxOfOrNull(Rect::bottom) ?: rootRect.top
+        val storyBottom = storyBounds.maxOfOrNull(Rect::bottom)
+        val navTop = navBounds.minOfOrNull(Rect::top) ?: rootRect.bottom
+
+        val overlayTop = when {
+            storyBottom != null && storyBottom > actionBarBottom -> storyBottom + HOME_MASK_STORY_GAP_PX
+            else -> actionBarBottom + (rootRect.height() / 5)
+        }.coerceAtMost(navTop)
+
+        if (overlayTop >= navTop) return emptyList()
+
+        return listOf(
+            Rect(
+                rootRect.left,
+                overlayTop,
+                rootRect.right,
+                navTop
+            )
+        )
     }
 
     private fun findFirstByViewId(
@@ -284,6 +311,24 @@ class InAppDetectionEngine @Inject constructor(
         return isSelected
     }
 
+    private fun isSelectedViewIdOrDescendant(root: AccessibilityNodeInfo, viewId: String): Boolean {
+        val matches = root.findAccessibilityNodeInfosByViewId(viewId)
+        val isSelected = matches.any(::nodeOrDescendantIsSelected)
+        matches.forEach { it.recycle() }
+        return isSelected
+    }
+
+    private fun nodeOrDescendantIsSelected(node: AccessibilityNodeInfo?): Boolean {
+        node ?: return false
+        if (node.isSelected || node.isChecked) return true
+        for (index in 0 until node.childCount) {
+            if (nodeOrDescendantIsSelected(node.getChild(index))) {
+                return true
+            }
+        }
+        return false
+    }
+
     private fun findVisibleBoundsByViewIds(
         root: AccessibilityNodeInfo,
         viewIds: List<String>
@@ -305,6 +350,31 @@ class InAppDetectionEngine @Inject constructor(
         }
 
         return collectedBounds
+    }
+
+    private fun findVisibleBoundsByContentDescRegex(
+        root: AccessibilityNodeInfo,
+        pattern: String,
+        topThresholdPx: Int
+    ): List<Rect> {
+        val regex = Regex(pattern, RegexOption.IGNORE_CASE)
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        val bounds = mutableListOf<Rect>()
+        queue.add(root)
+        while (queue.isNotEmpty()) {
+            val node = queue.removeFirst()
+            val contentDesc = node.contentDescription?.toString()
+            if (node.isVisibleToUser && contentDesc?.contains(regex) == true) {
+                val rect = Rect().also(node::getBoundsInScreen)
+                if (!rect.isEmpty && rect.top < topThresholdPx) {
+                    bounds += Rect(rect)
+                }
+            }
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let(queue::add)
+            }
+        }
+        return bounds
     }
 
     private fun findNodeByText(
@@ -398,10 +468,21 @@ class InAppDetectionEngine @Inject constructor(
         return if (index < navBar.childCount) navBar.getChild(index) else null
     }
 
+    fun isFeatureEnabled(packageName: String, featureId: String): Boolean =
+        enabledFeatureCache[packageName]?.contains(featureId) == true
+
     fun invalidateCache() {
         signatureCache.clear()
         enabledFeatureCache.clear()
         lastCacheRefreshMs = 0L
+    }
+
+    fun onForegroundPackageChanged(packageName: String) {
+        // No Instagram-specific state to reset right now.
+    }
+
+    fun resetInstagramHomeScrollBudget(ignoreScrollEventsForMs: Long = INSTAGRAM_HOME_RESET_GRACE_MS) {
+        // Home feed limiting is disabled. Keep as a no-op so callers stay stable.
     }
 
     private fun featureAliasesFor(
@@ -409,11 +490,11 @@ class InAppDetectionEngine @Inject constructor(
         detection: DetectionResult
     ): List<String> = when (packageName) {
         INSTAGRAM_PACKAGE -> when (detection.screenState) {
-            "REELS" -> listOf("REELS")
-            "EXPLORE" -> listOf("REELS", "EXPLORE")
-            "HOME" -> listOf("REELS", "HOME")
-            "DM" -> listOf("DM")
-            "DM_REEL_EXCEPTION" -> listOf("REELS", "DM")
+            "REELS" -> listOf(INSTAGRAM_GUARD_FEATURE_ID, "REELS")
+            "EXPLORE" -> listOf(INSTAGRAM_GUARD_FEATURE_ID, "REELS", "EXPLORE")
+            "HOME" -> listOf("HOME")
+            "DM" -> listOf(INSTAGRAM_GUARD_FEATURE_ID, "DM")
+            "DM_REEL_EXCEPTION" -> listOf(INSTAGRAM_GUARD_FEATURE_ID, "REELS", "DM")
             else -> listOfNotNull(detection.featureId)
         }
 
@@ -460,7 +541,8 @@ class InAppDetectionEngine @Inject constructor(
     companion object {
         private const val INSTAGRAM_PACKAGE = "com.instagram.android"
         private const val YOUTUBE_PACKAGE = "com.google.android.youtube"
-        private const val MAX_HOME_REEL_BOUNDS = 4
         private const val BOUNDS_SNAP_STEP_PX = 16
+        private const val INSTAGRAM_HOME_RESET_GRACE_MS = 1_200L
+        private const val HOME_MASK_STORY_GAP_PX = 24
     }
 }

@@ -15,6 +15,9 @@ interface InAppSignatureDao {
     @Upsert
     suspend fun upsertAll(signatures: List<InAppSignatureEntity>)
 
+    @Query("SELECT * FROM inapp_signatures")
+    suspend fun getAllSync(): List<InAppSignatureEntity>
+
     @Query("SELECT * FROM inapp_signatures WHERE rule_id = :ruleId")
     fun getByRuleId(ruleId: String): Flow<List<InAppSignatureEntity>>
 

@@ -2,6 +2,8 @@ package com.aman.bastion.service
 
 import android.app.AlarmManager
 import android.app.AppOpsManager
+import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager
 import android.media.AudioManager
 import android.app.Notification
 import android.app.NotificationChannel
@@ -23,6 +25,7 @@ import com.aman.bastion.data.blocking.dao.AppRuleDao
 import com.aman.bastion.data.hardcorelock.dao.HardcoreLockDao
 import com.aman.bastion.data.hardcorelock.entity.HardcoreLockEntity
 import com.aman.bastion.data.inapp.dao.InAppRuleDao
+import com.aman.bastion.domain.catalog.InAppRuleCatalog.INSTAGRAM_GUARD_FEATURE_ID
 import com.aman.bastion.data.service.dao.ServiceStateDao
 import com.aman.bastion.data.service.entity.ServiceStateEntity
 import com.aman.bastion.data.usage.dao.DailyUsageRecordDao
@@ -92,6 +95,8 @@ class BastionForegroundService : Service() {
     private var lastFeatureActionKey: String? = null
     private var pendingBoundedSyncJob: Job? = null
     private var pendingFeatureClearJob: Job? = null
+    private var pendingInstagramRedirectJob: Job? = null
+    private var pendingInfoBannerJob: Job? = null
     private var lastFeatureActionAtMs: Long = 0L
     private var previousMediaVolume: Int? = null
     private var mutedByBastion = false
@@ -112,6 +117,11 @@ class BastionForegroundService : Service() {
         scheduleRestart()
         overlayEngine.start(serviceScope)
         usageTrackingEngine.start(serviceScope)
+
+        serviceScope.launch {
+            delay(600)
+            seedForegroundPackageAtStartup()
+        }
 
         serviceScope.launch {
             while (isActive) {
@@ -169,10 +179,7 @@ class BastionForegroundService : Service() {
 
                 val blockOverlay = buildForegroundBlockOverlay(pkg)
                 if (blockOverlay != null) {
-                    overlayEngine.hideOverlay(currentKey)
-                    lastForegroundOverlayKey = null
-                    BastionServiceBridge.navigationCommand.value = NavigationCommand.HOME
-                    BastionServiceBridge.foregroundPackage.value = null
+                    dismissBlockedForegroundApp(currentKey, pkg)
                 } else {
                     overlayEngine.hideOverlay(currentKey)
                     lastForegroundOverlayKey = null
@@ -193,6 +200,7 @@ class BastionForegroundService : Service() {
             BastionServiceBridge.inAppScreenState.collect { state ->
                 if (state == null) {
                     pendingBoundedSyncJob?.cancel()
+                    pendingInstagramRedirectJob?.cancel()
                     scheduleFeatureOverlayClear()
                     return@collect
                 }
@@ -204,9 +212,12 @@ class BastionForegroundService : Service() {
 
                 if (matchingRule == null) {
                     pendingBoundedSyncJob?.cancel()
+                    pendingInstagramRedirectJob?.cancel()
                     scheduleFeatureOverlayClear()
                     return@collect
                 }
+
+                pendingInstagramRedirectJob?.cancel()
 
                 val action = when {
                     state.blockAction != InAppBlockAction.AUTO -> state.blockAction
@@ -417,6 +428,30 @@ class BastionForegroundService : Service() {
         return powerManager.isIgnoringBatteryOptimizations(packageName)
     }
 
+    private fun seedForegroundPackageAtStartup() {
+        if (!hasUsageAccess()) return
+
+        val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val now = System.currentTimeMillis()
+        val events = usageStatsManager.queryEvents(now - 120_000L, now)
+        val event = UsageEvents.Event()
+        var candidate: String? = null
+
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            if (event.packageName == packageName) continue
+            if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED ||
+                event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND
+            ) {
+                candidate = event.packageName
+            }
+        }
+
+        if (!candidate.isNullOrBlank()) {
+            BastionServiceBridge.foregroundPackage.value = candidate
+        }
+    }
+
     private fun ensureChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
@@ -486,11 +521,11 @@ class BastionForegroundService : Service() {
 
     private fun featureRuleCandidates(state: InAppScreenState): List<String> = when (state.packageName) {
         "com.instagram.android" -> when (state.screenState) {
-            "REELS" -> listOf("REELS")
-            "EXPLORE" -> listOf("REELS", "EXPLORE")
-            "HOME" -> listOf("REELS", "HOME")
-            "DM" -> listOf("DM")
-            "DM_REEL_EXCEPTION" -> listOf("REELS", "DM")
+            "REELS" -> listOf(INSTAGRAM_GUARD_FEATURE_ID, "REELS")
+            "EXPLORE" -> listOf(INSTAGRAM_GUARD_FEATURE_ID, "REELS", "EXPLORE")
+            "HOME" -> listOf("HOME")
+            "DM" -> listOf(INSTAGRAM_GUARD_FEATURE_ID, "DM")
+            "DM_REEL_EXCEPTION" -> listOf(INSTAGRAM_GUARD_FEATURE_ID, "REELS", "DM")
             else -> listOfNotNull(state.featureId, state.screenState)
         }
 
@@ -529,7 +564,8 @@ class BastionForegroundService : Service() {
                     packageName = state.packageName,
                     featureName = featureName,
                     mode = FeatureBlockMode.BOUNDED,
-                    boundsInScreen = state.overlayBounds.take(5)
+                    boundsInScreen = state.overlayBounds.take(5),
+                    touchBlockBoundsInScreen = state.touchBlockBounds.take(5)
                 )
             )
         }
@@ -556,21 +592,37 @@ class BastionForegroundService : Service() {
         pendingFeatureClearJob?.cancel()
         pendingFeatureClearJob = serviceScope.launch {
             delay(250)
+            // Don't clear if a coverage-requiring state has already re-established
+            // (e.g. a transient null fired during DM→Home navigation but HOME was
+            // re-detected before the timer fired).
+            val liveState = BastionServiceBridge.inAppScreenState.value
+            if (liveState != null &&
+                liveState.blockAction in setOf(
+                    InAppBlockAction.FULL_OVERLAY,
+                    InAppBlockAction.BOUNDED_OVERLAY
+                )
+            ) return@launch
             syncFeatureOverlays(emptyList())
             restoreMutedMediaIfNeeded()
         }
     }
 
+    private fun dismissBlockedForegroundApp(currentKey: String, packageName: String) {
+        pendingFeatureClearJob?.cancel()
+        pendingBoundedSyncJob?.cancel()
+        syncFeatureOverlays(emptyList())
+        restoreMutedMediaIfNeeded()
+        BastionServiceBridge.inAppScreenState.value = null
+        overlayEngine.hideOverlay(currentKey)
+        lastForegroundOverlayKey = null
+        BastionServiceBridge.navigationCommand.value = NavigationCommand.HOME
+        BastionServiceBridge.foregroundPackage.value = null
+    }
+
     private fun shouldMuteBlockedMedia(
         state: InAppScreenState,
         action: InAppBlockAction
-    ): Boolean {
-        if (action !in setOf(InAppBlockAction.FULL_OVERLAY, InAppBlockAction.BOUNDED_OVERLAY)) {
-            return false
-        }
-        return state.packageName == "com.instagram.android" &&
-            featureRuleCandidates(state).contains("REELS")
-    }
+    ): Boolean = false
 
     private fun muteMediaIfNeeded() {
         if (mutedByBastion) return
@@ -604,7 +656,8 @@ class BastionForegroundService : Service() {
     private suspend fun buildForegroundBlockOverlay(packageName: String): OverlayType? {
         val appLabel = resolveAppLabel(packageName)
         val now = System.currentTimeMillis()
-        val hasEnabledFeatureRules = inAppRuleDao.getByPackageSync(packageName).any { it.isEnabled }
+        val hasEnabledFeatureRules = packageName == "com.instagram.android" &&
+            inAppRuleDao.getByPackageSync(packageName).any { it.isEnabled }
 
         // 1. Hardcore lock table (written by StrictModeManager / HardcoreLockDao directly)
         val hardLock = hardcoreLockDao.getByPackage(packageName)
