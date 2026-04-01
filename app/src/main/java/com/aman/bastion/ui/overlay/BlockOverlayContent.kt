@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.aman.bastion.domain.model.UnlockCondition
 import com.aman.bastion.ui.theme.BastionColors
 import kotlinx.coroutines.delay
 
@@ -95,15 +96,18 @@ private fun SoftOverlay(state: OverlayState.Soft, onMarkComplete: () -> Unit) {
         color = BastionColors.AccentAmber
     )
     Spacer(Modifier.height(8.dp))
+    val reasonText = state.reason ?: "You blocked this."
     Text(
-        text  = "You blocked this.",
-        style = MaterialTheme.typography.bodyLarge,
-        color = BastionColors.TextSecondary,
+        text      = reasonText,
+        style     = MaterialTheme.typography.bodyLarge,
+        color     = BastionColors.TextSecondary,
         textAlign = androidx.compose.ui.text.style.TextAlign.Center
     )
     Spacer(Modifier.height(24.dp))
+
+    val (unlockMessage, ctaLabel) = unlockPrompt(state.unlockCondition)
     Text(
-        text  = "Complete your task to unlock",
+        text  = unlockMessage,
         style = MaterialTheme.typography.bodyMedium,
         color = BastionColors.TextSecondary
     )
@@ -117,8 +121,15 @@ private fun SoftOverlay(state: OverlayState.Soft, onMarkComplete: () -> Unit) {
             .clickable(onClick = onMarkComplete),
         contentAlignment = Alignment.Center
     ) {
-        Text("Mark Complete", style = MaterialTheme.typography.titleMedium, color = Color.Black)
+        Text(ctaLabel, style = MaterialTheme.typography.titleMedium, color = Color.Black)
     }
+}
+
+private fun unlockPrompt(condition: UnlockCondition): Pair<String, String> = when (condition) {
+    UnlockCondition.COMPLETE_TASK -> "Complete your task to unlock" to "Mark Complete"
+    UnlockCondition.WAIT_10_MIN   -> "Wait 10 minutes to unlock"   to "I waited"
+    UnlockCondition.DEEP_BREATHS  -> "Take 5 deep breaths to unlock" to "Done"
+    UnlockCondition.STEP_GOAL     -> "Reach your step goal to unlock" to "Done"
 }
 
 @Composable

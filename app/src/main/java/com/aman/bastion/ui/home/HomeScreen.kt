@@ -67,8 +67,9 @@ fun HomeScreen(
         ) {
             item {
                 ProtectionStatusCard(
-                    status = state.protectionStatus,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    status    = state.protectionStatus,
+                    onProtect = viewModel::onAddPanelToggle,
+                    modifier  = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
                 )
             }
 
@@ -107,17 +108,21 @@ fun HomeScreen(
 // ── Protection Status Card ────────────────────────────────────────────────────
 
 @Composable
-private fun ProtectionStatusCard(status: ProtectionStatus, modifier: Modifier = Modifier) {
+private fun ProtectionStatusCard(
+    status: ProtectionStatus,
+    onProtect: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     when (status) {
-        is ProtectionStatus.None           -> NoneStatusCard(modifier)
+        is ProtectionStatus.None           -> NoneStatusCard(onProtect = onProtect, modifier = modifier)
         is ProtectionStatus.Active         -> ActiveStatusCard(status, modifier)
         is ProtectionStatus.HardcoreActive -> HardcoreStatusCard(status, modifier)
     }
 }
 
 @Composable
-private fun NoneStatusCard(modifier: Modifier = Modifier) {
-    Box(
+private fun NoneStatusCard(onProtect: () -> Unit, modifier: Modifier = Modifier) {
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
@@ -125,17 +130,31 @@ private fun NoneStatusCard(modifier: Modifier = Modifier) {
             .border(1.dp, BastionColors.BorderSubtle, RoundedCornerShape(12.dp))
             .padding(24.dp)
     ) {
-        Column {
+        Text(
+            text  = "No active restrictions",
+            style = MaterialTheme.typography.titleMedium,
+            color = BastionColors.TextSecondary
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text  = "You're unprotected right now.",
+            style = MaterialTheme.typography.bodySmall,
+            color = BastionColors.TextMuted
+        )
+        Spacer(Modifier.height(16.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(BastionColors.AccentAmber)
+                .clickable(onClick = onProtect),
+            contentAlignment = Alignment.Center
+        ) {
             Text(
-                text  = "No active restrictions",
-                style = MaterialTheme.typography.titleMedium,
-                color = BastionColors.TextSecondary
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text  = "You're unprotected right now.",
-                style = MaterialTheme.typography.bodySmall,
-                color = BastionColors.TextMuted
+                text  = "Protect yourself",
+                style = MaterialTheme.typography.titleSmall,
+                color = Color.Black
             )
         }
     }

@@ -11,7 +11,8 @@ sealed class OverlayState {
         val packageName: String,
         val redirectLabel: String?,    // e.g. "Open DMs instead →"
         val redirectPackage: String?,
-        val unlockCondition: UnlockCondition
+        val unlockCondition: UnlockCondition,
+        val reason: String? = null     // e.g. "Your DMs are still open."
     ) : OverlayState()
 
     data class Hardcore(

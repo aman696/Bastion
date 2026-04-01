@@ -4,6 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -134,11 +135,9 @@ fun AppDetailScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 SoftBlockCard(
-                    selected       = state.selectedMode == BlockModeSelection.SOFT,
-                    selectedUnlock = state.selectedUnlock,
-                    onSelect       = { viewModel.onSelectMode(BlockModeSelection.SOFT) },
-                    onSelectUnlock = viewModel::onSelectUnlock,
-                    modifier       = Modifier.weight(1f)
+                    selected = state.selectedMode == BlockModeSelection.SOFT,
+                    onSelect = { viewModel.onSelectMode(BlockModeSelection.SOFT) },
+                    modifier = Modifier.weight(1f)
                 )
                 HardcoreCard(
                     selected           = state.selectedMode == BlockModeSelection.HARDCORE,
@@ -147,6 +146,32 @@ fun AppDetailScreen(
                     onSelectDuration   = viewModel::onSelectDuration,
                     modifier           = Modifier.weight(1f)
                 )
+            }
+
+            // Unlock condition chips — horizontal scroll, shown only when Soft is selected
+            if (state.selectedMode == BlockModeSelection.SOFT) {
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    UnlockCondition.entries.forEach { cond ->
+                        val active = state.selectedUnlock == cond
+                        Text(
+                            text     = cond.displayLabel(),
+                            style    = MaterialTheme.typography.labelSmall,
+                            color    = if (active) BastionColors.Background else BastionColors.AccentAmber,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(100.dp))
+                                .background(if (active) BastionColors.AccentAmber else BastionColors.BadgeBlockedBg)
+                                .border(1.dp, BastionColors.AccentAmber.copy(alpha = if (active) 1f else 0.4f), RoundedCornerShape(100.dp))
+                                .clickable { viewModel.onSelectUnlock(cond) }
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        )
+                    }
+                }
             }
 
             // Block note (hardcore only)
@@ -268,9 +293,7 @@ private fun FeatureRuleRow(row: FeatureRowState, onToggle: () -> Unit) {
 @Composable
 private fun SoftBlockCard(
     selected: Boolean,
-    selectedUnlock: UnlockCondition?,
     onSelect: () -> Unit,
-    onSelectUnlock: (UnlockCondition) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val borderColor = if (selected) BastionColors.AccentAmber else BastionColors.BorderSubtle
@@ -296,24 +319,6 @@ private fun SoftBlockCard(
             style = MaterialTheme.typography.bodySmall,
             color = BastionColors.TextSecondary
         )
-        if (selected) {
-            Spacer(Modifier.height(12.dp))
-            UnlockCondition.entries.forEach { cond ->
-                val active = selectedUnlock == cond
-                Text(
-                    text     = cond.displayLabel(),
-                    style    = MaterialTheme.typography.labelSmall,
-                    color    = if (active) BastionColors.Background else BastionColors.AccentAmber,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 3.dp)
-                        .clip(RoundedCornerShape(100.dp))
-                        .background(if (active) BastionColors.AccentAmber else BastionColors.BadgeBlockedBg)
-                        .clickable { onSelectUnlock(cond) }
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                )
-            }
-        }
     }
 }
 
