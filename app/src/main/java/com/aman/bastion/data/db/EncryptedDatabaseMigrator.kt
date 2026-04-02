@@ -118,13 +118,15 @@ object EncryptedDatabaseMigrator {
 
     private fun getOrCreatePassphrase(securePrefs: SharedPreferences): ByteArray {
         val existing = securePrefs.getString(PREF_DB_PASSPHRASE, null)
-        if (!existing.isNullOrBlank()) return existing.toByteArray(Charsets.UTF_8)
+        if (!existing.isNullOrBlank()) {
+            return Base64.getDecoder().decode(existing)
+        }
 
         val random = ByteArray(32)
         SecureRandom().nextBytes(random)
-        val created = Base64.getEncoder().encodeToString(random)
-        securePrefs.edit().putString(PREF_DB_PASSPHRASE, created).commit()
-        return created.toByteArray(Charsets.UTF_8)
+        val encoded = Base64.getEncoder().encodeToString(random)
+        securePrefs.edit().putString(PREF_DB_PASSPHRASE, encoded).apply()
+        return random
     }
 
     private fun isPlaintextDatabase(file: File): Boolean {

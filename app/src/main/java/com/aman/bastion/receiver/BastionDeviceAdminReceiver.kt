@@ -3,6 +3,8 @@ package com.aman.bastion.receiver
 import android.app.admin.DeviceAdminReceiver
 import android.content.Context
 import android.content.Intent
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import com.aman.bastion.service.StrictModeManager
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -20,7 +22,16 @@ class BastionDeviceAdminReceiver : DeviceAdminReceiver() {
     }
 
     override fun onDisabled(context: Context, intent: Intent) {
-        val prefs = context.getSharedPreferences("bastion_audit", Context.MODE_PRIVATE)
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        val prefs = EncryptedSharedPreferences.create(
+            context,
+            "bastion_audit",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
         prefs.edit()
             .putLong("admin_disabled_at", System.currentTimeMillis())
             .putBoolean("admin_active", false)
@@ -28,7 +39,16 @@ class BastionDeviceAdminReceiver : DeviceAdminReceiver() {
     }
 
     override fun onEnabled(context: Context, intent: Intent) {
-        val prefs = context.getSharedPreferences("bastion_audit", Context.MODE_PRIVATE)
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        val prefs = EncryptedSharedPreferences.create(
+            context,
+            "bastion_audit",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
         prefs.edit()
             .putBoolean("admin_active", true)
             .putLong("admin_enabled_at", System.currentTimeMillis())

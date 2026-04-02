@@ -20,9 +20,15 @@
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
 
-# Room — keep all entities and DAOs
--keep class com.aman.bastion.data.** { *; }
+# Room - keep only what reflection requires
+-keep @androidx.room.Entity class * { *; }
+-keep @androidx.room.Dao interface * { *; }
+-keep @androidx.room.Database class * { *; }
 -keepclassmembers class * extends androidx.room.RoomDatabase { *; }
+-keep class * extends androidx.room.migration.Migration { *; }
+
+# Keep EncryptedDatabaseMigrator (called reflectively at startup)
+-keep class com.aman.bastion.data.db.EncryptedDatabaseMigrator { *; }
 
 # Hilt
 -keep class dagger.hilt.** { *; }
